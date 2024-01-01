@@ -14,6 +14,10 @@ public interface PatientRepository extends Repository<PatientEntity, Long>
 
     public Iterable<PatientEntity> findByIdentifiers_SystemAndIdentifiers_Val(
         String system, String value);
+    
+    public Iterable<PatientEntity> findByIdentifiers_System(String system);
+
+    public Iterable<PatientEntity> findByIdentifiers_Val(String value);
 
     public boolean existsByResourceId(String resourceId);
 }
