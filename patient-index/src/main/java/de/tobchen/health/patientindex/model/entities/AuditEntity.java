@@ -55,11 +55,11 @@ public class AuditEntity
     protected AuditEntity() { }
 
     public AuditEntity(String categorySystem, String categoryCode, String codeSystem, String codeCode,
-        AuditEventAction action, Timestamp recordedAt, PatientEntity patient, String sourceId,
-        String sourceAddress, String destinationId, String destinationAddress, String query)
+        AuditEventAction action, Timestamp recordedAt, PatientEntity patient, String sourceDisplay,
+        String sourceAddress, String destinationDisplay, String destinationAddress, String query)
     {
         this.categorySystem = categorySystem;
-        this.codeCode = categoryCode;
+        this.categoryCode = categoryCode;
 
         this.codeSystem = codeSystem;
         this.codeCode = codeCode;
@@ -70,10 +70,10 @@ public class AuditEntity
 
         this.patient = patient;
 
-        this.sourceDisplay = sourceId;
+        this.sourceDisplay = sourceDisplay;
         this.sourceAddress = sourceAddress;
 
-        this.destinationDisplay = destinationId;
+        this.destinationDisplay = destinationDisplay;
         this.destinationAddress = destinationAddress;
 
         this.query = query;
