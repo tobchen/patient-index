@@ -1,4 +1,4 @@
-package de.tobchen.health.patientindex.ihe.configurations;
+package de.tobchen.health.patientindex.configurations;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

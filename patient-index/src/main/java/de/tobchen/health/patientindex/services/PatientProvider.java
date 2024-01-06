@@ -44,6 +44,8 @@ import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
 import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.dto.AuditDto;
+import de.tobchen.health.patientindex.model.dto.PatientCreationDto;
+import de.tobchen.health.patientindex.model.dto.PatientMergeDto;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
@@ -71,8 +73,12 @@ public class PatientProvider implements IResourceProvider
     {
         var outcome = create(patient);
 
+        var createdResource = (Patient) outcome.getResource();
+
         audit(RestOperationTypeEnum.CREATE, AuditEventAction.C,
-            List.of((Patient) outcome.getResource()), request);
+            List.of(createdResource), request);
+        
+        publisher.publishEvent(new PatientCreationDto(createdResource.getIdPart()));
 
         return outcome;
     }
@@ -114,9 +120,16 @@ public class PatientProvider implements IResourceProvider
             throw new InvalidRequestException("Both id and conditional are null");
         }
 
+        var updatedResource = (Patient) outcome.getResource();
+
         audit(RestOperationTypeEnum.UPDATE,
             outcome.getCreated().booleanValue() ? AuditEventAction.C : AuditEventAction.U,
-            List.of((Patient) outcome.getResource()), request);
+            List.of(updatedResource), request);
+        
+        if (outcome.getCreated().booleanValue())
+        {
+            publisher.publishEvent(new PatientCreationDto(updatedResource.getIdPart()));
+        }
 
         return outcome;
     }
@@ -178,6 +191,8 @@ public class PatientProvider implements IResourceProvider
             parameters.addParameter().setName("result").setResource(patient);
 
             audit(RestOperationTypeEnum.EXTENDED_OPERATION_TYPE, AuditEventAction.E, List.of(patient), request);
+
+            publisher.publishEvent(new PatientMergeDto(sourceId, targetId));
         }
         catch (Exception e)
         {
