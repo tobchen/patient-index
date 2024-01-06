@@ -31,7 +31,6 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.api.RestOperationTypeEnum;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
-import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
@@ -92,17 +91,15 @@ public class PatientProvider implements IResourceProvider
             }
 
             var identifierQuery = queries.get("identifier");
-            if (identifierQuery == null)
-            {
-                throw new InvalidRequestException("Conditional update accepts only identifier query");
-            }
-            else if (identifierQuery.length != 1)
+            if (identifierQuery == null || identifierQuery.length != 1)
             {
                 throw new InvalidRequestException("Conditional update accepts only one identifier query");
             }
 
-            // TODO Implement
-            throw new InternalErrorException("Not implemented yet!");
+            var systemAndValue = identifierQuery[0].split("\\|");
+
+            outcome = conditionalUpdate(systemAndValue.length > 0 ? systemAndValue[0] : null,
+                systemAndValue.length > 1 ? systemAndValue[1] : null, patient);
         }
         else
         {
@@ -141,15 +138,10 @@ public class PatientProvider implements IResourceProvider
     {
         var result = new ArrayList<Patient>();
 
-        String system = resourceIdentifier.getSystem();
-        String value = resourceIdentifier.getValue();
-
-        if (system != null && value != null)
+        for (var entity : findBySystemAndValue(
+            resourceIdentifier.getSystem(), resourceIdentifier.getValue()))
         {
-            for (var entity : repository.findByIdentifiers_SystemAndIdentifiers_Val(system, value))
-            {
-                result.add(resourceFromEntity(entity));
-            }
+            result.add(resourceFromEntity(entity));
         }
 
         audit(RestOperationTypeEnum.SEARCH_TYPE, AuditEventAction.E, result, request);
@@ -171,7 +163,7 @@ public class PatientProvider implements IResourceProvider
         String resourceId = patient.getIdPart();
 
         var entities = new ArrayList<PatientEntity>();
-        repository.findByIdentifiers_SystemAndIdentifiers_Val(system, value).forEach(entities::add);;
+        findBySystemAndValue(system, value).forEach(entities::add);;
         
         // https://hl7.org/fhir/http.html#cond-update
         var entityCount = entities.size();
@@ -278,6 +270,33 @@ public class PatientProvider implements IResourceProvider
         return new MethodOutcome(
             new IdType("Patient", entity.getResourceId()), Boolean.FALSE)
             .setResource(resourceFromEntity(entity));
+    }
+
+    private Iterable<PatientEntity> findBySystemAndValue(String system, String value)
+    {
+        Iterable<PatientEntity> result;
+
+        if (system != null && !system.isEmpty())
+        {
+            if (value != null && !value.isEmpty())
+            {
+                result = repository.findByIdentifiers_SystemAndIdentifiers_Val(system, value);
+            }
+            else
+            {
+                result = repository.findByIdentifiers_System(system);
+            }
+        }
+        else if (value != null && !value.isEmpty())
+        {
+            result = repository.findByIdentifiers_Val(value);
+        }
+        else
+        {
+            result = List.of();
+        }
+
+        return result;
     }
 
     private Patient resourceFromEntity(PatientEntity entity)
