@@ -11,9 +11,14 @@ import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Meta;
+import org.hl7.fhir.r5.model.OperationOutcome;
+import org.hl7.fhir.r5.model.Parameters;
 import org.hl7.fhir.r5.model.Patient;
 import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.AuditEvent.AuditEventAction;
+import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
+import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
+import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.lang.Nullable;
@@ -23,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import ca.uhn.fhir.rest.annotation.ConditionalUrlParam;
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.IdParam;
+import ca.uhn.fhir.rest.annotation.Operation;
+import ca.uhn.fhir.rest.annotation.OperationParam;
 import ca.uhn.fhir.rest.annotation.Read;
 import ca.uhn.fhir.rest.annotation.RequiredParam;
 import ca.uhn.fhir.rest.annotation.ResourceParam;
@@ -148,6 +155,37 @@ public class PatientProvider implements IResourceProvider
         audit(RestOperationTypeEnum.SEARCH_TYPE, AuditEventAction.E, result, request);
 
         return result;
+    }
+
+    @Operation(name = "$merge", idempotent = false)
+    public Parameters merge(@OperationParam(name = "source-patient", min = 1) Reference sourceReference,
+        @OperationParam(name = "target-patient", min = 1) Reference targetReference,
+        HttpServletRequest request)
+    {
+        var parameters = new Parameters()
+            .addParameter("source-patient", sourceReference)
+            .addParameter("target-patient", targetReference);
+
+        try
+        {
+            var sourceId = idFromReference(sourceReference, "Patient", "source-patient");
+            var targetId = idFromReference(targetReference, "Patient", "target-patient");
+
+            var patient = merge(sourceId, targetId);
+
+            parameters.addParameter().setName("outcome").setResource(
+                new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
+            parameters.addParameter().setName("result").setResource(patient);
+
+            audit(RestOperationTypeEnum.EXTENDED_OPERATION_TYPE, AuditEventAction.E, List.of(patient), request);
+        }
+        catch (Exception e)
+        {
+            parameters.addParameter().setName("outcome").setResource(
+                new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.ERROR, IssueType.PROCESSING)));
+        }
+
+        return parameters;
     }
 
     @Transactional
@@ -331,6 +369,83 @@ public class PatientProvider implements IResourceProvider
         }
 
         return resource;
+    }
+
+    private String idFromReference(Reference reference, String resourceType, String name)
+    {
+        var literalReference = reference.getReference();
+        if (literalReference == null)
+        {
+            throw new InvalidRequestException("Missing " + name + " literal reference");
+        }
+
+        if (UrlUtil.isAbsolute(literalReference))
+        {
+            throw new InvalidRequestException(name + " must be relative literal reference");
+        }
+
+        var parts = UrlUtil.parseUrl(literalReference);
+        if (parts == null || !resourceType.equals(parts.getResourceType()))
+        {
+            throw new InvalidRequestException(name + " must be reference of type " + resourceType);
+        }
+
+        var resourceId = parts.getResourceId();
+        if (resourceId == null)
+        {
+            throw new InvalidRequestException("Resource id missing for " + name);
+        }
+
+        return resourceId;
+    }
+
+    @Transactional
+    private Patient merge(String sourceId, String targetId)
+    {
+        PatientEntity sourceEntity = null;
+        PatientEntity targetEntity = null;
+
+        for (var entity : repository.findByResourceIdIn(List.of(sourceId, targetId)))
+        {
+            var resourceId = entity.getResourceId();
+
+            if (sourceId.equals(resourceId))
+            {
+                sourceEntity = entity;
+            }
+
+            if (targetId.equals(resourceId))
+            {
+                targetEntity = entity;
+            }
+        }
+
+        if (sourceEntity == null)
+        {
+            throw new InvalidRequestException("Source patient not found");
+        }
+        else if (targetEntity == null)
+        {
+            throw new InvalidRequestException("Target patient not found");
+        }
+        else if (sourceEntity.getId().equals(targetEntity.getId()))
+        {
+            throw new InvalidRequestException("Source and target patient are the same");
+        }
+        else if (sourceEntity.getMergedInto() != null)
+        {
+            throw new InvalidRequestException("Source patient is already merged");
+        }
+        else if (targetEntity.getMergedInto() != null)
+        {
+            throw new InvalidRequestException("Target patient is already merged");
+        }
+
+        sourceEntity.setMergedInto(targetEntity);
+
+        repository.save(sourceEntity);
+
+        return resourceFromEntity(targetEntity);
     }
 
     private void audit(RestOperationTypeEnum operation, AuditEventAction action,
