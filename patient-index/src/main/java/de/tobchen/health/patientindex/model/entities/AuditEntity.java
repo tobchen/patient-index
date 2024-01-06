@@ -13,6 +13,7 @@ import javax.persistence.Lob;
 import javax.persistence.ManyToOne;
 
 import org.hl7.fhir.r5.model.AuditEvent.AuditEventAction;
+import org.springframework.lang.Nullable;
 
 @Entity
 public class AuditEntity
@@ -43,10 +44,12 @@ public class AuditEntity
 
     @Column(nullable = false)
     private String sourceDisplay;
+    @Nullable
     private String sourceAddress;
 
     @Column(nullable = false)
     private String destinationDisplay;
+    @Nullable
     private String destinationAddress;
 
     @Lob
@@ -56,7 +59,8 @@ public class AuditEntity
 
     public AuditEntity(String categorySystem, String categoryCode, String codeSystem, String codeCode,
         AuditEventAction action, Timestamp recordedAt, PatientEntity patient, String sourceDisplay,
-        String sourceAddress, String destinationDisplay, String destinationAddress, String query)
+        @Nullable String sourceAddress, String destinationDisplay, @Nullable String destinationAddress,
+        String query)
     {
         this.categorySystem = categorySystem;
         this.categoryCode = categoryCode;

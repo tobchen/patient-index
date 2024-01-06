@@ -16,6 +16,7 @@ import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 
 import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.lang.Nullable;
 
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 
@@ -34,6 +35,7 @@ public class PatientEntity
     @CollectionTable(indexes = {@Index(columnList = "system"), @Index(columnList = "val")})
     private Set<IdentifierEmbeddable> identifiers = new HashSet<>();
 
+    @Nullable
     @ManyToOne(fetch = FetchType.LAZY)
     private PatientEntity mergedInto;
 
@@ -59,7 +61,7 @@ public class PatientEntity
         return identifiers;
     }
 
-    public PatientEntity getMergedInto() {
+    public @Nullable PatientEntity getMergedInto() {
         return mergedInto;
     }
 

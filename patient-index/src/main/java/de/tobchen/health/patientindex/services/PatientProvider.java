@@ -16,6 +16,7 @@ import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.AuditEvent.AuditEventAction;
 import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,7 +60,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
-    public MethodOutcome create(@ResourceParam Patient patient, HttpServletRequest request)
+    public MethodOutcome create(@ResourceParam Patient patient, @Nullable HttpServletRequest request)
     {
         var outcome = create(patient);
 
@@ -70,9 +71,9 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Update
-    synchronized public MethodOutcome update(@IdParam IIdType idType,
-        @ConditionalUrlParam String conditional, @ResourceParam Patient patient,
-        HttpServletRequest request)
+    synchronized public MethodOutcome update(@Nullable @IdParam IIdType idType,
+        @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient,
+        @Nullable HttpServletRequest request)
     {
         MethodOutcome outcome;
 
@@ -115,7 +116,7 @@ public class PatientProvider implements IResourceProvider
 
     @Read
     @Transactional(readOnly = true)
-    public Patient read(@IdParam IIdType resourceId, HttpServletRequest request)
+    public Patient read(@IdParam IIdType resourceId, @Nullable HttpServletRequest request)
     {
         Patient resource = null;
 
@@ -134,7 +135,7 @@ public class PatientProvider implements IResourceProvider
     @Transactional(readOnly = true)
     public List<Patient> searchByIdentifier(
         @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier,
-        HttpServletRequest request)
+        @Nullable HttpServletRequest request)
     {
         var result = new ArrayList<Patient>();
 
@@ -156,7 +157,8 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Transactional
-    private MethodOutcome conditionalUpdate(String system, String value, Patient patient)
+    private MethodOutcome conditionalUpdate(@Nullable String system, @Nullable String value,
+        Patient patient)
     {
         MethodOutcome outcome;
 
@@ -272,7 +274,7 @@ public class PatientProvider implements IResourceProvider
             .setResource(resourceFromEntity(entity));
     }
 
-    private Iterable<PatientEntity> findBySystemAndValue(String system, String value)
+    private Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
     {
         Iterable<PatientEntity> result;
 
@@ -332,7 +334,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     private void audit(RestOperationTypeEnum operation, AuditEventAction action,
-        Iterable<Patient> patients, HttpServletRequest request)
+        Iterable<Patient> patients, @Nullable HttpServletRequest request)
     {
         var recordedAt = new Date();
 
