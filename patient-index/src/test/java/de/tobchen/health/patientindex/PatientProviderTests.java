@@ -27,7 +27,8 @@ public class PatientProviderTests
     @Test
     public void createWithIdAndGetById()
     {
-        var result = provider.update(new IdType("test-id"), createPatient("test-id"), null);
+        var result = provider.update(new IdType("test-id"), null,
+            createPatient("test-id"), null);
         assertAll(result, "test-id", true);
 
         var outputPatient = provider.read(new IdType("test-id"), null);
@@ -99,7 +100,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()),
+        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
             createPatient(id.getIdPart(), identifierOne, identifierTwo), null);
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
@@ -125,7 +126,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()),
+        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
             createPatient(id.getIdPart(), identifierOne), null);
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
@@ -152,7 +153,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()),
+        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
             createPatient(id.getIdPart(), identifierTwo, identifierThree), null);
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());

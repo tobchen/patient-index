@@ -19,6 +19,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ca.uhn.fhir.rest.annotation.ConditionalUrlParam;
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.IdParam;
 import ca.uhn.fhir.rest.annotation.Read;
@@ -30,6 +31,11 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.api.RestOperationTypeEnum;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
+import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
+import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
+import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
+import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.dto.AuditDto;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
@@ -56,7 +62,7 @@ public class PatientProvider implements IResourceProvider
     @Create
     public MethodOutcome create(@ResourceParam Patient patient, HttpServletRequest request)
     {
-        var outcome = createOrUpdate(null, patient);
+        var outcome = create(patient);
 
         audit(RestOperationTypeEnum.CREATE, AuditEventAction.C,
             List.of((Patient) outcome.getResource()), request);
@@ -65,10 +71,43 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Update
-    synchronized public MethodOutcome update(@IdParam IIdType resourceId,
-        @ResourceParam Patient patient, HttpServletRequest request)
+    synchronized public MethodOutcome update(@IdParam IIdType idType,
+        @ConditionalUrlParam String conditional, @ResourceParam Patient patient,
+        HttpServletRequest request)
     {
-        var outcome = createOrUpdate(resourceId.getIdPart(), patient);
+        MethodOutcome outcome;
+
+        if (idType != null)
+        {
+            outcome = updateOrUpdateAsCreate(idType.getIdPart(), patient);
+        }
+        else if (conditional != null)
+        {
+            var parts = UrlUtil.parseUrl(conditional);
+
+            var queries = UrlUtil.parseQueryString(parts.getParams());
+            if (queries.size() != 1)
+            {
+                throw new InvalidRequestException("Unequal one search parameters");
+            }
+
+            var identifierQuery = queries.get("identifier");
+            if (identifierQuery == null)
+            {
+                throw new InvalidRequestException("Conditional update accepts only identifier query");
+            }
+            else if (identifierQuery.length != 1)
+            {
+                throw new InvalidRequestException("Conditional update accepts only one identifier query");
+            }
+
+            // TODO Implement
+            throw new InternalErrorException("Not implemented yet!");
+        }
+        else
+        {
+            throw new InvalidRequestException("Both id and conditional are null");
+        }
 
         audit(RestOperationTypeEnum.UPDATE,
             outcome.getCreated().booleanValue() ? AuditEventAction.C : AuditEventAction.U,
@@ -81,8 +120,6 @@ public class PatientProvider implements IResourceProvider
     @Transactional(readOnly = true)
     public Patient read(@IdParam IIdType resourceId, HttpServletRequest request)
     {
-        // TODO Audit Event
-
         Patient resource = null;
 
         var optionalEntity = repository.findByResourceId(resourceId.getIdPart());
@@ -102,8 +139,6 @@ public class PatientProvider implements IResourceProvider
         @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier,
         HttpServletRequest request)
     {
-        // TODO Audit Event
-        
         var result = new ArrayList<Patient>();
 
         String system = resourceIdentifier.getSystem();
@@ -123,35 +158,101 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Transactional
-    private MethodOutcome createOrUpdate(String resourceId, Patient patient)
+    private MethodOutcome create(Patient patient)
     {
-        PatientEntity entity = null;
-        boolean wasCreated = false;
+        return createAndSaveEntity(patient);
+    }
 
-        if (resourceId != null)
-        {
-            var optionalEntity = repository.findByResourceId(resourceId);
-            if (optionalEntity.isPresent())
-            {
-                entity = optionalEntity.get();
-            }
-        }
+    @Transactional
+    private MethodOutcome conditionalUpdate(String system, String value, Patient patient)
+    {
+        MethodOutcome outcome;
 
-        if (entity == null)
+        String resourceId = patient.getIdPart();
+
+        var entities = new ArrayList<PatientEntity>();
+        repository.findByIdentifiers_SystemAndIdentifiers_Val(system, value).forEach(entities::add);;
+        
+        // https://hl7.org/fhir/http.html#cond-update
+        var entityCount = entities.size();
+        if (entityCount == 0)
         {
             if (resourceId == null)
             {
-                do
-                {
-                    resourceId = UUID.randomUUID().toString();
-                }
-                while (repository.existsByResourceId(resourceId));
+                outcome = createAndSaveEntity(patient);
             }
-
-            entity = new PatientEntity(resourceId);
-            wasCreated = true;
+            else
+            {
+                if (!repository.existsByResourceId(resourceId))
+                {
+                    outcome = createAndSaveEntity(resourceId, patient);
+                }
+                else
+                {
+                    throw new ResourceVersionConflictException("No matches, id provided and already exist");
+                }
+            }
+        }
+        else if (entityCount == 1)
+        {
+            var entity = entities.get(0);
+            if (resourceId == null || resourceId.equals(entity.getResourceId()))
+            {
+                outcome = updateAndSaveEntity(entity, patient);
+            }
+            else
+            {
+                throw new InvalidRequestException(
+                    "One Match, resource id provided but does not match resource found");
+            }
+        }
+        else
+        {
+            throw new PreconditionFailedException("Multiple matches");
         }
 
+        return outcome;
+    }
+
+    @Transactional
+    private MethodOutcome updateOrUpdateAsCreate(String resourceId, Patient patient)
+    {
+        MethodOutcome outcome;
+
+        var optionalEntity = repository.findByResourceId(resourceId);
+        if (optionalEntity.isPresent())
+        {
+            outcome = updateAndSaveEntity(optionalEntity.get(), patient);
+        }
+        else
+        {
+            outcome = createAndSaveEntity(resourceId, patient);
+        }
+
+        return outcome;
+    }
+
+    private MethodOutcome createAndSaveEntity(Patient patient)
+    {
+        String resourceId;
+        do
+        {
+            resourceId = UUID.randomUUID().toString();
+        }
+        while (repository.existsByResourceId(resourceId));
+
+        return createAndSaveEntity(resourceId, patient);
+    }
+
+    private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
+    {
+        var entity = new PatientEntity(resourceId);
+
+        return updateAndSaveEntity(entity, patient).setCreated(Boolean.TRUE);
+    }
+
+    private MethodOutcome updateAndSaveEntity(PatientEntity entity, Patient patient)
+    {
         var entityIdentifiers = entity.getIdentifiers();
         entityIdentifiers.clear();
 
@@ -174,11 +275,9 @@ public class PatientProvider implements IResourceProvider
 
         entity = repository.save(entity);
 
-        var outcome = new MethodOutcome(new IdType("Patient", resourceId),
-            Boolean.valueOf(wasCreated));
-        outcome.setResource(resourceFromEntity(entity));
-
-        return outcome;
+        return new MethodOutcome(
+            new IdType("Patient", entity.getResourceId()), Boolean.FALSE)
+            .setResource(resourceFromEntity(entity));
     }
 
     private Patient resourceFromEntity(PatientEntity entity)
