@@ -3,12 +3,17 @@ package de.tobchen.health.patientindex.components;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.springframework.context.PayloadApplicationEvent;
+import org.springframework.context.event.EventListener;
+
 import de.tobchen.health.patientindex.configurations.PidFeedConfig;
+import de.tobchen.health.patientindex.model.dto.PidFeedMsgDto;
 
 public class PidFeedDispatcher
 {
     private final PidFeedConfig pidFeedConfig;
 
+    // TODO Start previously stored tasks
     // TODO Graceful shutdown
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -17,7 +22,13 @@ public class PidFeedDispatcher
         this.pidFeedConfig = pidFeedConfig;
     }
 
-    private void sendMessage(Long id)
+    @EventListener
+    public void onPidFeedMsg(PayloadApplicationEvent<PidFeedMsgDto> event)
+    {
+        executor.submit(new SendMessageTask(event.getPayload().messageId()));
+    }
+
+    synchronized private void sendMessage(Long id)
     {
         // TODO Implement: Send, if status is QUEUED
     }
