@@ -5,6 +5,8 @@ import java.util.Objects;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
 
+import org.springframework.lang.Nullable;
+
 @Embeddable
 public class IdentifierEmbeddable
 {
@@ -35,7 +37,7 @@ public class IdentifierEmbeddable
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
         boolean result;
 
         if (obj != null && obj instanceof IdentifierEmbeddable)

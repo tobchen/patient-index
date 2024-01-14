@@ -15,12 +15,10 @@ import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.Parameters;
 import org.hl7.fhir.r5.model.Patient;
 import org.hl7.fhir.r5.model.Reference;
-import org.hl7.fhir.r5.model.AuditEvent.AuditEventAction;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r5.model.Patient.LinkType;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +34,6 @@ import ca.uhn.fhir.rest.annotation.ResourceParam;
 import ca.uhn.fhir.rest.annotation.Search;
 import ca.uhn.fhir.rest.annotation.Update;
 import ca.uhn.fhir.rest.api.MethodOutcome;
-import ca.uhn.fhir.rest.api.RestOperationTypeEnum;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
@@ -111,14 +108,14 @@ public class PatientProvider implements IResourceProvider
 
     @Read
     @Transactional(readOnly = true)
-    public Patient read(@IdParam IIdType resourceId, @Nullable HttpServletRequest request)
+    public @Nullable Patient read(@IdParam IIdType resourceId, @Nullable HttpServletRequest request)
     {
         Patient resource = null;
 
-        var optionalEntity = repository.findByResourceId(resourceId.getIdPart());
-        if (optionalEntity.isPresent())
+        var entity = repository.findByResourceId(resourceId.getIdPart()).orElse(null);
+        if (entity != null)
         {
-            resource = resourceFromEntity(optionalEntity.get());
+            resource = resourceFromEntity(entity);
         }
 
         return resource;
@@ -233,10 +230,10 @@ public class PatientProvider implements IResourceProvider
     {
         MethodOutcome outcome;
 
-        var optionalEntity = repository.findByResourceId(resourceId);
-        if (optionalEntity.isPresent())
+        var entity = repository.findByResourceId(resourceId).orElse(null);
+        if (entity != null)
         {
-            outcome = updateAndSaveEntity(optionalEntity.get(), patient);
+            outcome = updateAndSaveEntity(entity, patient);
         }
         else
         {
@@ -262,7 +259,10 @@ public class PatientProvider implements IResourceProvider
     {
         var entity = new PatientEntity(resourceId);
 
-        return updateAndSaveEntity(entity, patient).setCreated(Boolean.TRUE);
+        var outcome = updateAndSaveEntity(entity, patient);
+        outcome.setCreated(Boolean.TRUE);
+
+        return outcome;
     }
 
     private MethodOutcome updateAndSaveEntity(PatientEntity entity, Patient patient)
@@ -289,9 +289,11 @@ public class PatientProvider implements IResourceProvider
 
         entity = repository.save(entity);
 
-        return new MethodOutcome(
-            new IdType("Patient", entity.getResourceId()), Boolean.FALSE)
-            .setResource(resourceFromEntity(entity));
+        var outcome = new MethodOutcome(
+            new IdType("Patient", entity.getResourceId()), Boolean.FALSE);
+        outcome.setResource(resourceFromEntity(entity));
+
+        return outcome;
     }
 
     private Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
@@ -384,23 +386,8 @@ public class PatientProvider implements IResourceProvider
     @Transactional
     private Patient merge(String sourceId, String targetId)
     {
-        PatientEntity sourceEntity = null;
-        PatientEntity targetEntity = null;
-
-        for (var entity : repository.findByResourceIdIn(List.of(sourceId, targetId)))
-        {
-            var resourceId = entity.getResourceId();
-
-            if (sourceId.equals(resourceId))
-            {
-                sourceEntity = entity;
-            }
-
-            if (targetId.equals(resourceId))
-            {
-                targetEntity = entity;
-            }
-        }
+        PatientEntity sourceEntity = repository.findByResourceId(sourceId).orElse(null);
+        PatientEntity targetEntity = repository.findByResourceId(targetId).orElse(null);
 
         if (sourceEntity == null)
         {

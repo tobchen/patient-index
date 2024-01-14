@@ -11,6 +11,12 @@ public class FhirConfig
     @Bean
     public FhirContext fhirContext()
     {
-        return FhirContext.forR5();
+        var context = FhirContext.forR5();
+        if (context == null)
+        {
+            throw new RuntimeException("Cannot get FHIR R5 context");
+        }
+
+        return context;
     }
 }
