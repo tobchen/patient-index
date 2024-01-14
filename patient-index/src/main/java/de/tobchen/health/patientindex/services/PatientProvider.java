@@ -43,9 +43,6 @@ import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
 import ca.uhn.fhir.util.UrlUtil;
-import de.tobchen.health.patientindex.model.dto.AuditDto;
-import de.tobchen.health.patientindex.model.dto.PatientCreationDto;
-import de.tobchen.health.patientindex.model.dto.PatientMergeDto;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
@@ -53,12 +50,10 @@ import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 @Service
 public class PatientProvider implements IResourceProvider
 {
-    private final ApplicationEventPublisher publisher;
     private final PatientRepository repository;
 
-    public PatientProvider(ApplicationEventPublisher publisher, PatientRepository repository)
+    public PatientProvider(PatientRepository repository)
     {
-        this.publisher = publisher;
         this.repository = repository;
     }
 
@@ -71,16 +66,7 @@ public class PatientProvider implements IResourceProvider
     @Create
     public MethodOutcome create(@ResourceParam Patient patient, @Nullable HttpServletRequest request)
     {
-        var outcome = create(patient);
-
-        var createdResource = (Patient) outcome.getResource();
-
-        audit(RestOperationTypeEnum.CREATE, AuditEventAction.C,
-            List.of(createdResource), request);
-        
-        publisher.publishEvent(new PatientCreationDto(createdResource.getIdPart()));
-
-        return outcome;
+        return create(patient);
     }
 
     @Update
@@ -120,17 +106,6 @@ public class PatientProvider implements IResourceProvider
             throw new InvalidRequestException("Both id and conditional are null");
         }
 
-        var updatedResource = (Patient) outcome.getResource();
-
-        audit(RestOperationTypeEnum.UPDATE,
-            outcome.getCreated().booleanValue() ? AuditEventAction.C : AuditEventAction.U,
-            List.of(updatedResource), request);
-        
-        if (outcome.getCreated().booleanValue())
-        {
-            publisher.publishEvent(new PatientCreationDto(updatedResource.getIdPart()));
-        }
-
         return outcome;
     }
 
@@ -145,8 +120,6 @@ public class PatientProvider implements IResourceProvider
         {
             resource = resourceFromEntity(optionalEntity.get());
         }
-
-        audit(RestOperationTypeEnum.READ, AuditEventAction.R, List.of(resource), request);
 
         return resource;
     }
@@ -164,8 +137,6 @@ public class PatientProvider implements IResourceProvider
         {
             result.add(resourceFromEntity(entity));
         }
-
-        audit(RestOperationTypeEnum.SEARCH_TYPE, AuditEventAction.E, result, request);
 
         return result;
     }
@@ -189,10 +160,6 @@ public class PatientProvider implements IResourceProvider
             parameters.addParameter().setName("outcome").setResource(
                 new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
             parameters.addParameter().setName("result").setResource(patient);
-
-            audit(RestOperationTypeEnum.EXTENDED_OPERATION_TYPE, AuditEventAction.E, List.of(patient), request);
-
-            publisher.publishEvent(new PatientMergeDto(sourceId, targetId));
         }
         catch (Exception e)
         {
@@ -461,36 +428,5 @@ public class PatientProvider implements IResourceProvider
         repository.save(sourceEntity);
 
         return resourceFromEntity(targetEntity);
-    }
-
-    private void audit(RestOperationTypeEnum operation, AuditEventAction action,
-        Iterable<Patient> patients, @Nullable HttpServletRequest request)
-    {
-        var recordedAt = new Date();
-
-        String sourceAddress = null;
-        String destinationAddress = null;
-        String query = null;
-
-        if (request != null)
-        {
-            sourceAddress = request.getRemoteAddr();
-            destinationAddress = request.getLocalAddr();
-            
-            if (operation == RestOperationTypeEnum.SEARCH_TYPE)
-            {
-                query = request.getRequestURL().toString();
-            }
-        }
-
-        for (var patient : patients)
-        {
-            publisher.publishEvent(
-                new AuditDto("http://terminology.hl7.org/CodeSystem/audit-event-type",
-                "rest", "http://hl7.org/fhir/restful-interaction",
-                operation.getCode(), action, recordedAt, patient.getIdPart(),
-                "FHIR Client", sourceAddress, "FHIR Server",
-                destinationAddress, query));
-        }
     }
 }
