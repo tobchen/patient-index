@@ -28,23 +28,23 @@ public class PatientProviderTests
     public void createWithIdAndGetById()
     {
         var result = provider.update(new IdType("test-id"), null,
-            createPatient("test-id"), null);
+            createPatient("test-id"));
         assertAll(result, "test-id", true);
 
-        var outputPatient = provider.read(new IdType("test-id"), null);
+        var outputPatient = provider.read(new IdType("test-id"));
         assertAll(outputPatient, "test-id");
     }
 
     @Test
     public void createWithoutIdAndGetById()
     {
-        var createOutcome = provider.create(createPatient(), null);
+        var createOutcome = provider.create(createPatient());
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
-        var outputPatient = provider.read(id, null);
+        var outputPatient = provider.read(id);
         assertNotNull(outputPatient);
         assertAll(outputPatient, id.getIdPart());
     }
@@ -54,13 +54,13 @@ public class PatientProviderTests
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-get-by-id");
 
-        var createOutcome = provider.create(createPatient(identifierOne), null);
+        var createOutcome = provider.create(createPatient(identifierOne));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
-        var outputPatient = provider.read(id, null);
+        var outputPatient = provider.read(id);
         assertNotNull(outputPatient);
         assertAll(outputPatient, id.getIdPart(), identifierOne);
     }
@@ -70,14 +70,14 @@ public class PatientProviderTests
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-get-by-identifier");
 
-        var createOutcome = provider.create(createPatient(identifierOne), null);
+        var createOutcome = provider.create(createPatient(identifierOne));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
         var patients = provider.searchByIdentifier(
-            new TokenParam(identifierOne.system(), identifierOne.value()), null);
+            new TokenParam(identifierOne.system(), identifierOne.value()));
         assertNotNull(patients);
         assertEquals(1, patients.size());
         var patient = patients.get(0);
@@ -90,22 +90,22 @@ public class PatientProviderTests
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-add-another-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "one-id-add-another-2");
 
-        var createOutcome = provider.create(createPatient(identifierOne), null);
+        var createOutcome = provider.create(createPatient(identifierOne));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
-        var beforePatient = provider.read(id, null);
+        var beforePatient = provider.read(id);
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne);
 
         var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
-            createPatient(id.getIdPart(), identifierOne, identifierTwo), null);
+            createPatient(id.getIdPart(), identifierOne, identifierTwo));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
 
-        var afterPatient = provider.read(id, null);
+        var afterPatient = provider.read(id);
         assertNotNull(afterPatient);
         assertAll(afterPatient, id.getIdPart(), identifierOne, identifierTwo);
     }
@@ -116,22 +116,22 @@ public class PatientProviderTests
         var identifierOne = new Identifier("urn:oid:11.12.13", "two-ids-remove-one-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "two-ids-remove-one-2");
 
-        var createOutcome = provider.create(createPatient(identifierOne, identifierTwo), null);
+        var createOutcome = provider.create(createPatient(identifierOne, identifierTwo));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
-        var beforePatient = provider.read(id, null);
+        var beforePatient = provider.read(id);
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
         var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
-            createPatient(id.getIdPart(), identifierOne), null);
+            createPatient(id.getIdPart(), identifierOne));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
 
-        var afterPatient = provider.read(id, null);
+        var afterPatient = provider.read(id);
         assertNotNull(afterPatient);
         assertAll(afterPatient, id.getIdPart(), identifierOne);
     }
@@ -143,22 +143,22 @@ public class PatientProviderTests
         var identifierTwo = new Identifier("urn:oid:11.12.13", "two-ids-replace-one-2");
         var identifierThree = new Identifier("urn:oid:11.12.13", "two-ids-replace-one-3");
 
-        var createOutcome = provider.create(createPatient(identifierOne, identifierTwo), null);
+        var createOutcome = provider.create(createPatient(identifierOne, identifierTwo));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
-        var beforePatient = provider.read(id, null);
+        var beforePatient = provider.read(id);
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
         var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
-            createPatient(id.getIdPart(), identifierTwo, identifierThree), null);
+            createPatient(id.getIdPart(), identifierTwo, identifierThree));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
 
-        var afterPatient = provider.read(id, null);
+        var afterPatient = provider.read(id);
         assertNotNull(afterPatient);
         assertAll(afterPatient, id.getIdPart(), identifierTwo, identifierThree);
     }
@@ -172,14 +172,14 @@ public class PatientProviderTests
         var identifierFour = new Identifier("urn:oid:11.12.13", "four-id-get-by-identifier-4");
 
         var createOutcome = provider.create(
-            createPatient(identifierOne, identifierTwo, identifierThree, identifierFour), null);
+            createPatient(identifierOne, identifierTwo, identifierThree, identifierFour));
         assertAll(createOutcome, true);
         
         var id = createOutcome.getId();
         assertNotNull(id);
 
         var patients = provider.searchByIdentifier(
-            new TokenParam(identifierThree.system(), identifierThree.value()), null);
+            new TokenParam(identifierThree.system(), identifierThree.value()));
         assertNotNull(patients);
         assertEquals(1, patients.size());
         var patient = patients.get(0);

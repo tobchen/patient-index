@@ -5,8 +5,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-import javax.servlet.http.HttpServletRequest;
-
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r5.model.IdType;
@@ -36,6 +34,7 @@ import ca.uhn.fhir.rest.annotation.Update;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
+import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
@@ -61,21 +60,28 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
-    public MethodOutcome create(@ResourceParam Patient patient, @Nullable HttpServletRequest request)
+    public MethodOutcome create(@ResourceParam Patient patient)
     {
-        return create(patient);
+        return createAndSaveEntity(patient);
     }
 
     @Update
     synchronized public MethodOutcome update(@Nullable @IdParam IIdType idType,
-        @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient,
-        @Nullable HttpServletRequest request)
+        @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
     {
         MethodOutcome outcome;
 
         if (idType != null)
         {
-            outcome = updateOrUpdateAsCreate(idType.getIdPart(), patient);
+            var idPart = idType.getIdPart();
+            if (idPart != null)
+            {
+                outcome = updateOrUpdateAsCreate(idPart, patient);
+            }
+            else
+            {
+                throw new InvalidRequestException("Id is missing id part");
+            }
         }
         else if (conditional != null)
         {
@@ -108,14 +114,18 @@ public class PatientProvider implements IResourceProvider
 
     @Read
     @Transactional(readOnly = true)
-    public @Nullable Patient read(@IdParam IIdType resourceId, @Nullable HttpServletRequest request)
+    public @Nullable Patient read(@IdParam IIdType resourceId)
     {
         Patient resource = null;
 
-        var entity = repository.findByResourceId(resourceId.getIdPart()).orElse(null);
-        if (entity != null)
+        var idPart = resourceId.getIdPart();
+        if (idPart != null)
         {
-            resource = resourceFromEntity(entity);
+            var entity = repository.findByResourceId(idPart).orElse(null);
+            if (entity != null)
+            {
+                resource = resourceFromEntity(entity);
+            }
         }
 
         return resource;
@@ -124,15 +134,20 @@ public class PatientProvider implements IResourceProvider
     @Search
     @Transactional(readOnly = true)
     public List<Patient> searchByIdentifier(
-        @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier,
-        @Nullable HttpServletRequest request)
+        @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier)
     {
         var result = new ArrayList<Patient>();
 
-        for (var entity : findBySystemAndValue(
-            resourceIdentifier.getSystem(), resourceIdentifier.getValue()))
+        var entities = findBySystemAndValue(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
+        if (entities != null)
         {
-            result.add(resourceFromEntity(entity));
+            for (var entity : entities)
+            {
+                if (entity != null)
+                {
+                    result.add(resourceFromEntity(entity));
+                }
+            }
         }
 
         return result;
@@ -140,8 +155,7 @@ public class PatientProvider implements IResourceProvider
 
     @Operation(name = "$merge", idempotent = false)
     public Parameters merge(@OperationParam(name = "source-patient", min = 1) Reference sourceReference,
-        @OperationParam(name = "target-patient", min = 1) Reference targetReference,
-        HttpServletRequest request)
+        @OperationParam(name = "target-patient", min = 1) Reference targetReference)
     {
         var parameters = new Parameters()
             .addParameter("source-patient", sourceReference)
@@ -168,12 +182,6 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Transactional
-    private MethodOutcome create(Patient patient)
-    {
-        return createAndSaveEntity(patient);
-    }
-
-    @Transactional
     private MethodOutcome conditionalUpdate(@Nullable String system, @Nullable String value,
         Patient patient)
     {
@@ -182,7 +190,12 @@ public class PatientProvider implements IResourceProvider
         String resourceId = patient.getIdPart();
 
         var entities = new ArrayList<PatientEntity>();
-        findBySystemAndValue(system, value).forEach(entities::add);;
+
+        var foundEntities = findBySystemAndValue(system, value);
+        if (foundEntities != null)
+        {
+            foundEntities.forEach(entities::add);
+        }
         
         // https://hl7.org/fhir/http.html#cond-update
         var entityCount = entities.size();
@@ -207,14 +220,18 @@ public class PatientProvider implements IResourceProvider
         else if (entityCount == 1)
         {
             var entity = entities.get(0);
-            if (resourceId == null || resourceId.equals(entity.getResourceId()))
+            if (entity == null)
+            {
+                throw new InternalErrorException("One match, but is null");
+            }
+            else if (resourceId == null || resourceId.equals(entity.getResourceId()))
             {
                 outcome = updateAndSaveEntity(entity, patient);
             }
             else
             {
                 throw new InvalidRequestException(
-                    "One Match, resource id provided but does not match resource found");
+                    "One match, resource id provided but does not match resource found");
             }
         }
         else
@@ -243,6 +260,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
+    @Transactional
     private MethodOutcome createAndSaveEntity(Patient patient)
     {
         String resourceId;
@@ -255,6 +273,7 @@ public class PatientProvider implements IResourceProvider
         return createAndSaveEntity(resourceId, patient);
     }
 
+    @Transactional
     private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
     {
         var entity = new PatientEntity(resourceId);
@@ -296,7 +315,8 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    private Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
+    @Transactional(readOnly = true)
+    private @Nullable Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
     {
         Iterable<PatientEntity> result;
 
@@ -317,7 +337,7 @@ public class PatientProvider implements IResourceProvider
         }
         else
         {
-            result = List.of();
+            result = null;
         }
 
         return result;
