@@ -31,7 +31,11 @@ import ca.uhn.fhir.rest.annotation.RequiredParam;
 import ca.uhn.fhir.rest.annotation.ResourceParam;
 import ca.uhn.fhir.rest.annotation.Search;
 import ca.uhn.fhir.rest.annotation.Update;
+import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.param.DateParam;
+import ca.uhn.fhir.rest.param.DateRangeParam;
+import ca.uhn.fhir.rest.param.ParamPrefixEnum;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
@@ -42,6 +46,7 @@ import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
+import de.tobchen.health.patientindex.util.DateParamUtils;
 
 @Service
 public class PatientProvider implements IResourceProvider
@@ -66,7 +71,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Update
-    synchronized public MethodOutcome update(@Nullable @IdParam IIdType idType,
+    public MethodOutcome update(@Nullable @IdParam IIdType idType,
         @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
     {
         MethodOutcome outcome;
@@ -139,6 +144,65 @@ public class PatientProvider implements IResourceProvider
         var result = new ArrayList<Patient>();
 
         var entities = findBySystemAndValue(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
+        if (entities != null)
+        {
+            for (var entity : entities)
+            {
+                if (entity != null)
+                {
+                    result.add(resourceFromEntity(entity));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    @Search
+    @Transactional(readOnly = true)
+    public List<Patient> searchByLastUpdated(
+        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
+    {
+        var startParam = dateRangeParam.getLowerBound();
+        var endParam = dateRangeParam.getUpperBound();
+
+        if (startParam != null && !ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
+        {
+            throw new InvalidRequestException("Only gt prefix for start date supported");
+        }
+
+        if (endParam != null && !ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
+        {
+            throw new InvalidRequestException("Only le prefix for end date supported");
+        }
+
+        var result = new ArrayList<Patient>();
+
+        var startInstant = DateParamUtils.completeToHighestDate(startParam);
+        var endInstant = DateParamUtils.completeToHighestDate(endParam);
+
+        Iterable<PatientEntity> entities = null;
+
+        if (startInstant != null)
+        {
+            if (endInstant != null)
+            {
+                if (startInstant != null && endInstant != null)
+                {
+                    entities =
+                        repository.findByUpdatedAtGreaterThanAndUpdatedAtLessThanEqual(startInstant, endInstant);
+                }
+            }
+            else
+            {
+                entities = repository.findByUpdatedAtGreaterThan(startInstant);
+            }
+        }
+        else if (endInstant != null)
+        {
+            entities = repository.findByUpdatedAtLessThanEqual(endInstant);
+        }
+
         if (entities != null)
         {
             for (var entity : entities)

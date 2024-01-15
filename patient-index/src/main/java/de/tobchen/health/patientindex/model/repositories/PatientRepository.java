@@ -21,6 +21,8 @@ public interface PatientRepository extends Repository<PatientEntity, Long>
 
     public Iterable<PatientEntity> findByUpdatedAtGreaterThan(Instant instant);
 
+    public Iterable<PatientEntity> findByUpdatedAtLessThanEqual(Instant instant);
+
     public Iterable<PatientEntity> findByUpdatedAtGreaterThanAndUpdatedAtLessThanEqual(Instant from, Instant to);
 
     public boolean existsByResourceId(String resourceId);
