@@ -47,15 +47,19 @@ import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
-import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Tracer;
 
 @Service
 public class PatientProvider implements IResourceProvider
 {
+    private final Tracer tracer;
     private final PatientRepository repository;
 
-    public PatientProvider(PatientRepository repository)
+    public PatientProvider(OpenTelemetry openTelemetry, PatientRepository repository)
     {
+        this.tracer = openTelemetry.getTracer(PatientProvider.class.getName());
         this.repository = repository;
     }
 
@@ -66,189 +70,285 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
-    @WithSpan
     public MethodOutcome create(@ResourceParam Patient patient)
     {
-        return createAndSaveEntity(patient);
+        var span = tracer.spanBuilder("PatientProvider.create").startSpan();
+
+        try (var scope = span.makeCurrent())
+        {
+            var outcome = createAndSaveEntity(patient);
+
+            span.setAttribute("audit.action", "create");
+            span.setAttribute("audit.patient", ((Patient) outcome.getResource()).getIdPart());
+
+            return outcome;
+        }
+        catch (Throwable t)
+        {
+            span.recordException(t);
+            throw t;
+        }
+        finally
+        {
+            span.end();
+        }
     }
 
     @Update
-    @WithSpan
     public MethodOutcome update(@Nullable @IdParam IIdType idType,
         @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
     {
-        MethodOutcome outcome;
+        var span = tracer.spanBuilder("PatientProvider.update").startSpan();
 
-        if (idType != null)
+        try (var scope = span.makeCurrent())
         {
-            var idPart = idType.getIdPart();
-            if (idPart != null)
+            MethodOutcome outcome;
+
+            if (idType != null)
             {
-                outcome = updateOrUpdateAsCreate(idPart, patient);
+                var idPart = idType.getIdPart();
+                if (idPart != null)
+                {
+                    outcome = updateOrUpdateAsCreate(idPart, patient);
+                }
+                else
+                {
+                    throw new InvalidRequestException("Id is missing id part");
+                }
+            }
+            else if (conditional != null)
+            {
+                var parts = UrlUtil.parseUrl(conditional);
+
+                var queries = UrlUtil.parseQueryString(parts.getParams());
+                if (queries.size() != 1)
+                {
+                    throw new InvalidRequestException("Unequal one search parameters");
+                }
+
+                var identifierQuery = queries.get("identifier");
+                if (identifierQuery == null || identifierQuery.length != 1)
+                {
+                    throw new InvalidRequestException("Conditional update accepts only one identifier query");
+                }
+
+                var systemAndValue = identifierQuery[0].split("\\|");
+
+                outcome = conditionalUpdate(systemAndValue.length > 0 ? systemAndValue[0] : null,
+                    systemAndValue.length > 1 ? systemAndValue[1] : null, patient);
             }
             else
             {
-                throw new InvalidRequestException("Id is missing id part");
+                throw new InvalidRequestException("Both id and conditional are null");
             }
+
+            span.setAttribute("audit.action", outcome.getCreated().booleanValue() ? "create" : "update");
+            span.setAttribute("audit.patient", ((Patient) outcome.getResource()).getIdPart());
+
+            return outcome;
         }
-        else if (conditional != null)
+        catch (Throwable t)
         {
-            var parts = UrlUtil.parseUrl(conditional);
-
-            var queries = UrlUtil.parseQueryString(parts.getParams());
-            if (queries.size() != 1)
-            {
-                throw new InvalidRequestException("Unequal one search parameters");
-            }
-
-            var identifierQuery = queries.get("identifier");
-            if (identifierQuery == null || identifierQuery.length != 1)
-            {
-                throw new InvalidRequestException("Conditional update accepts only one identifier query");
-            }
-
-            var systemAndValue = identifierQuery[0].split("\\|");
-
-            outcome = conditionalUpdate(systemAndValue.length > 0 ? systemAndValue[0] : null,
-                systemAndValue.length > 1 ? systemAndValue[1] : null, patient);
+            span.recordException(t);
+            throw t;
         }
-        else
+        finally
         {
-            throw new InvalidRequestException("Both id and conditional are null");
+            span.end();
         }
-
-        return outcome;
     }
 
     @Read
-    @WithSpan
     @Transactional(readOnly = true)
     public @Nullable Patient read(@IdParam IIdType resourceId)
     {
-        Patient resource = null;
+        var span = tracer.spanBuilder("PatientProvider.read").startSpan();
 
-        var idPart = resourceId.getIdPart();
-        if (idPart != null)
+        try (var scope = span.makeCurrent())
         {
-            var entity = repository.findByResourceId(idPart).orElse(null);
-            if (entity != null)
-            {
-                resource = resourceFromEntity(entity);
-            }
-        }
+            Patient resource = null;
 
-        return resource;
+            var idPart = resourceId.getIdPart();
+            if (idPart != null)
+            {
+                var entity = repository.findByResourceId(idPart).orElse(null);
+                if (entity != null)
+                {
+                    resource = resourceFromEntity(entity);
+                }
+            }
+
+            if (resource != null)
+            {
+                span.setAttribute("audit.action", "read");
+                span.setAttribute("audit.patient", resource.getIdPart());
+            }
+
+            return resource;
+        }
+        catch (Throwable t)
+        {
+            span.recordException(t);
+            throw t;
+        }
+        finally
+        {
+            span.end();
+        }
     }
 
     @Search
-    @WithSpan
     @Transactional(readOnly = true)
     public List<Patient> searchByIdentifier(
         @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier)
     {
-        var result = new ArrayList<Patient>();
+        var span = tracer.spanBuilder("PatientProvider.searchByIdentifier").startSpan();
 
-        var entities = findBySystemAndValue(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
-        if (entities != null)
+        try (var scope = span.makeCurrent())
         {
-            for (var entity : entities)
+            var result = new ArrayList<Patient>();
+
+            var entities = findBySystemAndValue(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
+            if (entities != null)
             {
-                if (entity != null)
+                for (var entity : entities)
                 {
-                    result.add(resourceFromEntity(entity));
+                    if (entity != null)
+                    {
+                        result.add(resourceFromEntity(entity));
+                    }
                 }
             }
-        }
 
-        return result;
+            var patientValues = new ArrayList<String>();
+            for (var resource : result)
+            {
+                patientValues.add(resource.getIdPart());
+            }
+
+            span.setAttribute("audit.action", "search");
+            span.setAttribute(AttributeKey.stringArrayKey("patient"), patientValues);
+
+            return result;
+        }
+        catch (Throwable t)
+        {
+            span.recordException(t);
+            throw t;
+        }
+        finally
+        {
+            span.end();
+        }
     }
 
     @Search
-    @WithSpan
     @Transactional(readOnly = true)
     public List<Patient> searchByLastUpdated(
         @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
     {
-        Instant startInstant;
-        var startParam = dateRangeParam.getLowerBound();
-        if (startParam != null)
+        var span = tracer.spanBuilder("PatientProvider.searchByLastUpdated").startSpan();
+
+        try (var scope = span.makeCurrent())
         {
-            if (!ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
+            Instant startInstant;
+            var startParam = dateRangeParam.getLowerBound();
+            if (startParam != null)
             {
-                throw new InvalidRequestException("Only gt prefix for start date supported");
-            }
-            else if (!TemporalPrecisionEnum.MILLI.equals(startParam.getPrecision()))
-            {
-                throw new InvalidRequestException("Only full precision supported");
-            }
-
-            startInstant = startParam.getValue().toInstant();
-        }
-        else
-        {
-            startInstant = null;
-        }
-
-        Instant endInstant;
-        var endParam = dateRangeParam.getUpperBound();
-        if (endParam != null)
-        {
-            if (!ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
-            {
-                throw new InvalidRequestException("Only le prefix for end date supported");
-            }
-            else if (!TemporalPrecisionEnum.MILLI.equals(endParam.getPrecision()))
-            {
-                throw new InvalidRequestException("Only full precision supported");
-            }
-
-            endInstant = endParam.getValue().toInstant();
-        }
-        else
-        {
-            endInstant = null;
-        }
-
-        var result = new ArrayList<Patient>();
-
-        Iterable<PatientEntity> entities = null;
-
-        if (startInstant != null)
-        {
-            if (endInstant != null)
-            {
-                if (startInstant != null && endInstant != null)
+                if (!ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
                 {
-                    entities =
-                        repository.findByUpdatedAtGreaterThanAndUpdatedAtLessThanEqual(startInstant, endInstant);
+                    throw new InvalidRequestException("Only gt prefix for start date supported");
                 }
+                else if (!TemporalPrecisionEnum.MILLI.equals(startParam.getPrecision()))
+                {
+                    throw new InvalidRequestException("Only full precision supported");
+                }
+
+                startInstant = startParam.getValue().toInstant();
             }
             else
             {
-                entities = repository.findByUpdatedAtGreaterThan(startInstant);
+                startInstant = null;
             }
-        }
-        else if (endInstant != null)
-        {
-            entities = repository.findByUpdatedAtLessThanEqual(endInstant);
-        }
 
-        if (entities != null)
-        {
-            for (var entity : entities)
+            Instant endInstant;
+            var endParam = dateRangeParam.getUpperBound();
+            if (endParam != null)
             {
-                if (entity != null)
+                if (!ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
                 {
-                    result.add(resourceFromEntity(entity));
+                    throw new InvalidRequestException("Only le prefix for end date supported");
+                }
+                else if (!TemporalPrecisionEnum.MILLI.equals(endParam.getPrecision()))
+                {
+                    throw new InvalidRequestException("Only full precision supported");
+                }
+
+                endInstant = endParam.getValue().toInstant();
+            }
+            else
+            {
+                endInstant = null;
+            }
+
+            var result = new ArrayList<Patient>();
+
+            Iterable<PatientEntity> entities = null;
+
+            if (startInstant != null)
+            {
+                if (endInstant != null)
+                {
+                    if (startInstant != null && endInstant != null)
+                    {
+                        entities =
+                            repository.findByUpdatedAtGreaterThanAndUpdatedAtLessThanEqual(startInstant, endInstant);
+                    }
+                }
+                else
+                {
+                    entities = repository.findByUpdatedAtGreaterThan(startInstant);
                 }
             }
-        }
+            else if (endInstant != null)
+            {
+                entities = repository.findByUpdatedAtLessThanEqual(endInstant);
+            }
 
-        return result;
+            if (entities != null)
+            {
+                for (var entity : entities)
+                {
+                    if (entity != null)
+                    {
+                        result.add(resourceFromEntity(entity));
+                    }
+                }
+            }
+
+            var patientValues = new ArrayList<String>();
+            for (var resource : result)
+            {
+                patientValues.add(resource.getIdPart());
+            }
+
+            span.setAttribute("audit.action", "search");
+            span.setAttribute(AttributeKey.stringArrayKey("patient"), patientValues);
+
+            return result;
+        }
+        catch (Throwable t)
+        {
+            span.recordException(t);
+            throw t;
+        }
+        finally
+        {
+            span.end();
+        }
     }
 
     @Operation(name = "$merge", idempotent = false)
-    @WithSpan
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
     {
@@ -276,7 +376,6 @@ public class PatientProvider implements IResourceProvider
         return parameters;
     }
 
-    @WithSpan
     @Transactional
     private MethodOutcome conditionalUpdate(@Nullable String system, @Nullable String value,
         Patient patient)
@@ -338,7 +437,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @WithSpan
     @Transactional
     private MethodOutcome updateOrUpdateAsCreate(String resourceId, Patient patient)
     {
@@ -357,7 +455,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @WithSpan
     @Transactional
     private MethodOutcome createAndSaveEntity(Patient patient)
     {
@@ -371,7 +468,6 @@ public class PatientProvider implements IResourceProvider
         return createAndSaveEntity(resourceId, patient);
     }
 
-    @WithSpan
     @Transactional
     private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
     {
@@ -383,7 +479,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @WithSpan
     private MethodOutcome updateAndSaveEntity(PatientEntity entity, Patient patient)
     {
         var entityIdentifiers = entity.getIdentifiers();
@@ -415,7 +510,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @WithSpan
     @Transactional(readOnly = true)
     private @Nullable Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
     {
@@ -444,7 +538,6 @@ public class PatientProvider implements IResourceProvider
         return result;
     }
 
-    @WithSpan
     private Patient resourceFromEntity(PatientEntity entity)
     {
         var resource = new Patient();
@@ -477,7 +570,6 @@ public class PatientProvider implements IResourceProvider
         return resource;
     }
 
-    @WithSpan
     private String idFromReference(Reference reference, String resourceType, String name)
     {
         var literalReference = reference.getReference();
@@ -506,7 +598,6 @@ public class PatientProvider implements IResourceProvider
         return resourceId;
     }
 
-    @WithSpan
     @Transactional
     private Patient merge(String sourceId, String targetId)
     {

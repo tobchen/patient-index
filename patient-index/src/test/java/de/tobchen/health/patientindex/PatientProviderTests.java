@@ -20,6 +20,7 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 import de.tobchen.health.patientindex.services.PatientProvider;
+import io.opentelemetry.api.OpenTelemetry;
 
 @ExtendWith(SpringExtension.class)
 @DataJpaTest
@@ -34,7 +35,7 @@ public class PatientProviderTests
     @BeforeAll
     public void initTests()
     {
-        provider = new PatientProvider(repository);
+        provider = new PatientProvider(OpenTelemetry.noop(), repository);
     }
 
     @Test
