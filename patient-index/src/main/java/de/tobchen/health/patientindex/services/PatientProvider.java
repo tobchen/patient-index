@@ -1,5 +1,6 @@
 package de.tobchen.health.patientindex.services;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -21,6 +22,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
 import ca.uhn.fhir.rest.annotation.ConditionalUrlParam;
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.IdParam;
@@ -45,7 +47,6 @@ import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
-import de.tobchen.health.patientindex.util.DateParamUtils;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 
 @Service
@@ -168,23 +169,47 @@ public class PatientProvider implements IResourceProvider
     public List<Patient> searchByLastUpdated(
         @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
     {
+        Instant startInstant;
         var startParam = dateRangeParam.getLowerBound();
-        var endParam = dateRangeParam.getUpperBound();
-
-        if (startParam != null && !ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
+        if (startParam != null)
         {
-            throw new InvalidRequestException("Only gt prefix for start date supported");
+            if (!ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
+            {
+                throw new InvalidRequestException("Only gt prefix for start date supported");
+            }
+            else if (!TemporalPrecisionEnum.MILLI.equals(startParam.getPrecision()))
+            {
+                throw new InvalidRequestException("Only full precision supported");
+            }
+
+            startInstant = startParam.getValue().toInstant();
+        }
+        else
+        {
+            startInstant = null;
         }
 
-        if (endParam != null && !ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
+        Instant endInstant;
+        var endParam = dateRangeParam.getUpperBound();
+        if (endParam != null)
         {
-            throw new InvalidRequestException("Only le prefix for end date supported");
+            if (!ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
+            {
+                throw new InvalidRequestException("Only le prefix for end date supported");
+            }
+            else if (!TemporalPrecisionEnum.MILLI.equals(endParam.getPrecision()))
+            {
+                throw new InvalidRequestException("Only full precision supported");
+            }
+
+            endInstant = endParam.getValue().toInstant();
+        }
+        else
+        {
+            endInstant = null;
         }
 
         var result = new ArrayList<Patient>();
-
-        var startInstant = DateParamUtils.completeToHighestDate(startParam);
-        var endInstant = DateParamUtils.completeToHighestDate(endParam);
 
         Iterable<PatientEntity> entities = null;
 
@@ -381,7 +406,7 @@ public class PatientProvider implements IResourceProvider
             }
         }
 
-        entity = repository.save(entity);
+        entity = save(entity);
 
         var outcome = new MethodOutcome(
             new IdType("Patient", entity.getResourceId()), Boolean.FALSE);
@@ -511,8 +536,14 @@ public class PatientProvider implements IResourceProvider
 
         sourceEntity.setMergedInto(targetEntity);
 
-        repository.save(sourceEntity);
+        save(sourceEntity);
 
         return resourceFromEntity(targetEntity);
+    }
+
+    private PatientEntity save(PatientEntity entity)
+    {
+        entity.setUpdatedAt();
+        return repository.save(entity);
     }
 }

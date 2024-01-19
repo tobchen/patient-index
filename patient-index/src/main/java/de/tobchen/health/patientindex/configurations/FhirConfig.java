@@ -1,9 +1,12 @@
 package de.tobchen.health.patientindex.configurations;
 
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import ca.uhn.fhir.context.FhirContext;
+import de.tobchen.health.patientindex.services.PatientProvider;
+import de.tobchen.health.patientindex.servlets.FhirServlet;
 
 @Configuration
 public class FhirConfig
@@ -18,5 +21,11 @@ public class FhirConfig
         }
 
         return context;
+    }
+
+    @Bean
+    public ServletRegistrationBean<FhirServlet> fhirServlet(FhirContext context, PatientProvider patientProvider)
+    {
+        return new ServletRegistrationBean<>(new FhirServlet(context, patientProvider), "/fhir/r5/*");
     }
 }

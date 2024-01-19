@@ -1,13 +1,11 @@
 package de.tobchen.health.patientindex.servlets;
 
 import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.server.RestfulServer;
 import de.tobchen.health.patientindex.services.PatientProvider;
 
-@WebServlet(urlPatterns = "/fhir/r5/*")
 public class FhirServlet extends RestfulServer
 {
     private final PatientProvider patientProvider;

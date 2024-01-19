@@ -39,7 +39,6 @@ public class PatientEntity
     @ManyToOne(fetch = FetchType.LAZY)
     private PatientEntity mergedInto;
 
-    @UpdateTimestamp
     private Instant updatedAt;
 
     protected PatientEntity() { }
@@ -47,6 +46,7 @@ public class PatientEntity
     public PatientEntity(String resourceId)
     {
         this.resourceId = resourceId;
+        this.updatedAt = Instant.now();
     }
 
     public Long getId() {
@@ -67,6 +67,14 @@ public class PatientEntity
 
     public void setMergedInto(PatientEntity mergedInto) {
         this.mergedInto = mergedInto;
+    }
+
+    public void setUpdatedAt() {
+        setUpdatedAt(Instant.now());
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     public Instant getUpdatedAt() {

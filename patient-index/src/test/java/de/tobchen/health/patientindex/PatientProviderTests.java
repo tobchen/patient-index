@@ -7,22 +7,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Patient;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.annotation.DirtiesContext.ClassMode;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
+import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 import de.tobchen.health.patientindex.services.PatientProvider;
 
-@SpringBootTest
-@DirtiesContext(classMode = ClassMode.BEFORE_CLASS)
+@ExtendWith(SpringExtension.class)
+@DataJpaTest
+@TestInstance(Lifecycle.PER_CLASS)
 public class PatientProviderTests
 {
     @Autowired
+    private PatientRepository repository;
+
     private PatientProvider provider;
+
+    @BeforeAll
+    public void initTests()
+    {
+        provider = new PatientProvider(repository);
+    }
 
     @Test
     public void createWithIdAndGetById()
