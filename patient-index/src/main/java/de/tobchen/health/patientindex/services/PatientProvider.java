@@ -46,6 +46,7 @@ import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 import de.tobchen.health.patientindex.util.DateParamUtils;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 
 @Service
 public class PatientProvider implements IResourceProvider
@@ -64,12 +65,14 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
+    @WithSpan
     public MethodOutcome create(@ResourceParam Patient patient)
     {
         return createAndSaveEntity(patient);
     }
 
     @Update
+    @WithSpan
     public MethodOutcome update(@Nullable @IdParam IIdType idType,
         @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
     {
@@ -117,6 +120,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Read
+    @WithSpan
     @Transactional(readOnly = true)
     public @Nullable Patient read(@IdParam IIdType resourceId)
     {
@@ -136,6 +140,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Search
+    @WithSpan
     @Transactional(readOnly = true)
     public List<Patient> searchByIdentifier(
         @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier)
@@ -158,6 +163,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Search
+    @WithSpan
     @Transactional(readOnly = true)
     public List<Patient> searchByLastUpdated(
         @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
@@ -217,8 +223,9 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Operation(name = "$merge", idempotent = false)
-    public Parameters merge(@OperationParam(name = "source-patient", min = 1) Reference sourceReference,
-        @OperationParam(name = "target-patient", min = 1) Reference targetReference)
+    @WithSpan
+    public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
+        @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
     {
         var parameters = new Parameters()
             .addParameter("source-patient", sourceReference)
@@ -244,6 +251,7 @@ public class PatientProvider implements IResourceProvider
         return parameters;
     }
 
+    @WithSpan
     @Transactional
     private MethodOutcome conditionalUpdate(@Nullable String system, @Nullable String value,
         Patient patient)
@@ -305,6 +313,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
+    @WithSpan
     @Transactional
     private MethodOutcome updateOrUpdateAsCreate(String resourceId, Patient patient)
     {
@@ -323,6 +332,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
+    @WithSpan
     @Transactional
     private MethodOutcome createAndSaveEntity(Patient patient)
     {
@@ -336,6 +346,7 @@ public class PatientProvider implements IResourceProvider
         return createAndSaveEntity(resourceId, patient);
     }
 
+    @WithSpan
     @Transactional
     private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
     {
@@ -347,6 +358,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
+    @WithSpan
     private MethodOutcome updateAndSaveEntity(PatientEntity entity, Patient patient)
     {
         var entityIdentifiers = entity.getIdentifiers();
@@ -378,6 +390,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
+    @WithSpan
     @Transactional(readOnly = true)
     private @Nullable Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
     {
@@ -406,6 +419,7 @@ public class PatientProvider implements IResourceProvider
         return result;
     }
 
+    @WithSpan
     private Patient resourceFromEntity(PatientEntity entity)
     {
         var resource = new Patient();
@@ -438,6 +452,7 @@ public class PatientProvider implements IResourceProvider
         return resource;
     }
 
+    @WithSpan
     private String idFromReference(Reference reference, String resourceType, String name)
     {
         var literalReference = reference.getReference();
@@ -466,6 +481,7 @@ public class PatientProvider implements IResourceProvider
         return resourceId;
     }
 
+    @WithSpan
     @Transactional
     private Patient merge(String sourceId, String targetId)
     {

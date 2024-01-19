@@ -10,10 +10,8 @@ import org.springframework.boot.web.servlet.ServletComponentScan;
 @SpringBootApplication
 public class PatientIndexApplication
 {
-
 	public static void main(String[] args)
 	{
 		SpringApplication.run(PatientIndexApplication.class, args);
 	}
-
 }
