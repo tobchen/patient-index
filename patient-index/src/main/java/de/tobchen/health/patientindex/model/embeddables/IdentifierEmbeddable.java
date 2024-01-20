@@ -40,10 +40,9 @@ public class IdentifierEmbeddable
     public boolean equals(@Nullable Object obj) {
         boolean result;
 
-        if (obj != null && obj instanceof IdentifierEmbeddable)
+        if (obj instanceof IdentifierEmbeddable identifier)
         {
-            var other = (IdentifierEmbeddable) obj;
-            result = Objects.equals(system, other.system) && Objects.equals(val, other.val);
+            result = Objects.equals(system, identifier.system) && Objects.equals(val, identifier.val);
         }
         else
         {
