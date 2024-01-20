@@ -7,13 +7,4 @@ logging:
       springframework.transaction.interceptor.TransactionInterceptor: trace
     de.tobchen: trace
 
-patient-index:
-  production-mode: false
-  ihe:
-    pid-oid: 1.2.3.10
-    app-oid: 1.2.3.1
-    facility-oid: 1.2.3.2
-    patient-identify-feed:
-      receiver:
-        app-oid: 4.5.6.1
-        facility-oid: 4.5.6.2
+server.port: 8080
