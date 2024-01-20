@@ -1,3 +1,3 @@
 @org.springframework.lang.NonNullApi
 @org.springframework.lang.NonNullFields
-package de.tobchen.health.patientindex.components;
+package de.tobchen.health.patientindex.feed.configurations;
