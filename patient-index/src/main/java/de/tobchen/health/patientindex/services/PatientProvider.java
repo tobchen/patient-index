@@ -47,6 +47,7 @@ import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
+import de.tobchen.health.patientindex.util.ReferenceUtils;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Tracer;
@@ -362,8 +363,34 @@ public class PatientProvider implements IResourceProvider
 
             try
             {
-                var sourceId = idFromReference(sourceReference, "Patient", "source-patient");
-                var targetId = idFromReference(targetReference, "Patient", "target-patient");
+                var sourceIdType = ReferenceUtils.idFromLiteralReference(sourceReference);
+                var targetIdType = ReferenceUtils.idFromLiteralReference(targetReference);
+
+                if (sourceIdType == null)
+                {
+                    throw new IllegalArgumentException("Couldn't get source id type");
+                }
+                else if (targetIdType == null)
+                {
+                    throw new IllegalArgumentException("Couldn't get target id type");
+                }
+
+                if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
+                {
+                    throw new IllegalArgumentException("Cannot handle absolute references");
+                }
+
+                var sourceId = sourceIdType.getIdPart();
+                var targetId = targetIdType.getIdPart();
+
+                if (sourceId == null)
+                {
+                    throw new IllegalArgumentException("Cannot get source id part");
+                }
+                else if (targetId == null)
+                {
+                    throw new IllegalArgumentException("Cannot get target id part");
+                }
 
                 var patient = merge(sourceId, targetId);
 
@@ -377,6 +404,7 @@ public class PatientProvider implements IResourceProvider
             }
             catch (Exception e)
             {
+                // TODO Write message
                 parameters.addParameter().setName("outcome").setResource(
                     new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.ERROR, IssueType.PROCESSING)));
             }
@@ -577,7 +605,7 @@ public class PatientProvider implements IResourceProvider
             resource.setActive(false);
 
             resource.addLink()
-                .setOther(new Reference(new IdType("Patient", mergedInto.getId())))
+                .setOther(new Reference(new IdType("Patient", mergedInto.getResourceId())))
                 .setType(LinkType.REPLACEDBY);
         }
         else
@@ -586,34 +614,6 @@ public class PatientProvider implements IResourceProvider
         }
 
         return resource;
-    }
-
-    private String idFromReference(Reference reference, String resourceType, String name)
-    {
-        var literalReference = reference.getReference();
-        if (literalReference == null)
-        {
-            throw new InvalidRequestException("Missing " + name + " literal reference");
-        }
-
-        if (UrlUtil.isAbsolute(literalReference))
-        {
-            throw new InvalidRequestException(name + " must be relative literal reference");
-        }
-
-        var parts = UrlUtil.parseUrl(literalReference);
-        if (parts == null || !resourceType.equals(parts.getResourceType()))
-        {
-            throw new InvalidRequestException(name + " must be reference of type " + resourceType);
-        }
-
-        var resourceId = parts.getResourceId();
-        if (resourceId == null)
-        {
-            throw new InvalidRequestException("Resource id missing for " + name);
-        }
-
-        return resourceId;
     }
 
     @Transactional

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Patient;
+import org.hl7.fhir.r5.model.Reference;
+import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -20,6 +22,7 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 import de.tobchen.health.patientindex.services.PatientProvider;
+import de.tobchen.health.patientindex.util.ReferenceUtils;
 import io.opentelemetry.api.OpenTelemetry;
 
 @ExtendWith(SpringExtension.class)
@@ -199,6 +202,41 @@ public class PatientProviderTests
         var patient = patients.get(0);
         assertAll(patient, id.getIdPart(),
             identifierOne, identifierTwo, identifierThree, identifierFour);
+    }
+
+    @Test
+    public void merge()
+    {
+        var sourceCreateOutcome = provider.create(createPatient());
+        assertAll(sourceCreateOutcome, true);
+        
+        var sourceId = sourceCreateOutcome.getId();
+        assertNotNull(sourceId);
+
+        var targetCreateOutcome = provider.create(createPatient());
+        assertAll(targetCreateOutcome, true);
+        
+        var targetId = targetCreateOutcome.getId();
+        assertNotNull(targetId);
+
+        // TODO Check parameters
+        provider.merge(new Reference(sourceId), new Reference(targetId));
+
+        var outputPatient = provider.read(sourceId);
+        assertNotNull(outputPatient);
+        assertAll(outputPatient, sourceId.getIdPart());
+
+        var linkList = outputPatient.getLink();
+        assertNotNull(linkList);
+        assertEquals(1, linkList.size());
+        var link = linkList.get(0);
+        assertNotNull(link);
+        assertEquals(LinkType.REPLACEDBY, link.getType());
+        var other = link.getOther();
+        assertNotNull(other);
+        var otherIdType = ReferenceUtils.idFromLiteralReference(other);
+        assertNotNull(otherIdType);
+        assertEquals(targetId.getIdPart(), otherIdType.getIdPart());
     }
 
     private Patient createPatient(Identifier... identifiers)
