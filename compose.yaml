@@ -1,0 +1,13 @@
+services:
+  patient-index:
+    build: ./patient-index
+    ports:
+      - 8080:8080
+    environment:
+      - JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar"
+      - OTEL_SERVICE_NAME="patient-index"
+      - OTEL_TRACES_EXPORTER=logging
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
+    volumes:
+      - ./otel:/otel
