@@ -227,7 +227,7 @@ public class PatientProvider implements IResourceProvider
             }
 
             span.setAttribute("audit.action", "search");
-            span.setAttribute(AttributeKey.stringArrayKey("patient"), patientValues);
+            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientValues);
 
             return result;
         }
@@ -333,7 +333,7 @@ public class PatientProvider implements IResourceProvider
             }
 
             span.setAttribute("audit.action", "search");
-            span.setAttribute(AttributeKey.stringArrayKey("patient"), patientValues);
+            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientValues);
 
             return result;
         }
@@ -352,28 +352,46 @@ public class PatientProvider implements IResourceProvider
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
     {
-        var parameters = new Parameters()
-            .addParameter("source-patient", sourceReference)
-            .addParameter("target-patient", targetReference);
+        var span = tracer.spanBuilder("PatientProvider.merge").startSpan();
 
-        try
+        try (var scope = span.makeCurrent())
         {
-            var sourceId = idFromReference(sourceReference, "Patient", "source-patient");
-            var targetId = idFromReference(targetReference, "Patient", "target-patient");
+            var parameters = new Parameters()
+                .addParameter("source-patient", sourceReference)
+                .addParameter("target-patient", targetReference);
 
-            var patient = merge(sourceId, targetId);
+            try
+            {
+                var sourceId = idFromReference(sourceReference, "Patient", "source-patient");
+                var targetId = idFromReference(targetReference, "Patient", "target-patient");
 
-            parameters.addParameter().setName("outcome").setResource(
-                new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
-            parameters.addParameter().setName("result").setResource(patient);
+                var patient = merge(sourceId, targetId);
+
+                parameters.addParameter().setName("outcome").setResource(
+                    new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
+                parameters.addParameter().setName("result").setResource(patient);
+
+                span.setAttribute("audit.action", "merge");
+                span.setAttribute("audit.patient.soure", sourceId);
+                span.setAttribute("audit.patient.target", targetId);
+            }
+            catch (Exception e)
+            {
+                parameters.addParameter().setName("outcome").setResource(
+                    new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.ERROR, IssueType.PROCESSING)));
+            }
+
+            return parameters;
         }
-        catch (Exception e)
+        catch (Throwable t)
         {
-            parameters.addParameter().setName("outcome").setResource(
-                new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.ERROR, IssueType.PROCESSING)));
+            span.recordException(t);
+            throw t;
         }
-
-        return parameters;
+        finally
+        {
+            span.end();
+        }
     }
 
     @Transactional
