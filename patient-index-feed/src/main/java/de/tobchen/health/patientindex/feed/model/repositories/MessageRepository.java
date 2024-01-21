@@ -9,5 +9,7 @@ import de.tobchen.health.patientindex.feed.model.projections.MessageOccuredAt;
 
 public interface MessageRepository extends Repository<MessageEntity, Long>
 {
-    public Optional<MessageOccuredAt> findTopByOrderByOccuredAtDesc();    
+    public Iterable<MessageEntity> saveAll(Iterable<MessageEntity> entities);
+
+    public Optional<MessageOccuredAt> findTopByOrderByOccuredAtDesc();
 }
