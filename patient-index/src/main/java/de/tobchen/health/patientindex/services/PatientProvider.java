@@ -47,7 +47,6 @@ import ca.uhn.fhir.util.UrlUtil;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 import de.tobchen.health.patientindex.model.entities.PatientEntity;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
-import de.tobchen.health.patientindex.util.ReferenceUtils;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Tracer;
@@ -363,8 +362,8 @@ public class PatientProvider implements IResourceProvider
 
             try
             {
-                var sourceIdType = ReferenceUtils.idFromLiteralReference(sourceReference);
-                var targetIdType = ReferenceUtils.idFromLiteralReference(targetReference);
+                var sourceIdType = sourceReference.getReferenceElement();
+                var targetIdType = targetReference.getReferenceElement();
 
                 if (sourceIdType == null)
                 {
@@ -374,10 +373,17 @@ public class PatientProvider implements IResourceProvider
                 {
                     throw new IllegalArgumentException("Couldn't get target id type");
                 }
-
-                if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
+                else if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
                 {
                     throw new IllegalArgumentException("Cannot handle absolute references");
+                }
+                else if (!"Patient".equals(sourceIdType.getResourceType()))
+                {
+                    throw new IllegalArgumentException("Source reference is not of type Patient");
+                }
+                else if (!"Patient".equals(targetIdType.getResourceType()))
+                {
+                    throw new IllegalArgumentException("Target reference is not of type Patient");
                 }
 
                 var sourceId = sourceIdType.getIdPart();

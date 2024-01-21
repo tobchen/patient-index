@@ -22,7 +22,6 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
 import de.tobchen.health.patientindex.model.repositories.PatientRepository;
 import de.tobchen.health.patientindex.services.PatientProvider;
-import de.tobchen.health.patientindex.util.ReferenceUtils;
 import io.opentelemetry.api.OpenTelemetry;
 
 @ExtendWith(SpringExtension.class)
@@ -234,7 +233,7 @@ public class PatientProviderTests
         assertEquals(LinkType.REPLACEDBY, link.getType());
         var other = link.getOther();
         assertNotNull(other);
-        var otherIdType = ReferenceUtils.idFromLiteralReference(other);
+        var otherIdType = other.getReferenceElement();
         assertNotNull(otherIdType);
         assertEquals(targetId.getIdPart(), otherIdType.getIdPart());
     }
