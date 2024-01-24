@@ -597,6 +597,7 @@ public class PatientProvider implements IResourceProvider
         resource.setId(entity.getResourceId());
 
         var meta = new Meta();
+        meta.setVersionId(Long.toString(entity.getVersionId()));
         meta.setLastUpdated(Date.from(entity.getUpdatedAt()));
         resource.setMeta(meta);
         
@@ -658,6 +659,7 @@ public class PatientProvider implements IResourceProvider
 
     private PatientEntity save(PatientEntity entity)
     {
+        entity.setVersionId(entity.getVersionId() + 1);
         entity.setUpdatedAt();
         return repository.save(entity);
     }

@@ -30,6 +30,9 @@ public class PatientEntity
     @Column(unique = true, nullable = false, updatable = false)
     private String resourceId;
 
+    @Column(nullable = false)
+    private long versionId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(indexes = {@Index(columnList = "system"), @Index(columnList = "val")})
     private Set<IdentifierEmbeddable> identifiers = new HashSet<>();
@@ -45,6 +48,7 @@ public class PatientEntity
     public PatientEntity(String resourceId)
     {
         this.resourceId = resourceId;
+        this.versionId = 0;
         this.updatedAt = Instant.now();
     }
 
@@ -78,5 +82,13 @@ public class PatientEntity
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getVersionId() {
+        return versionId;
+    }
+
+    public void setVersionId(long versionId) {
+        this.versionId = versionId;
     }
 }
