@@ -18,26 +18,37 @@ public class MessageEntity
     private Long id;
 
     @Column(nullable = false, updatable = false)
-    private Instant occuredAt;
+    private String patientId;
+
+    @Nullable
+    @Column(updatable = false)
+    private String patientVersionId;
+
+    @Column(nullable = false, updatable = false)
+    private Instant patientUpdatedAt;
+
+    @Nullable
+    @Column(updatable = false)
+    private String otherPatientId;
 
     @Nullable
     private Instant sentAt;
 
-    @Column(nullable = false, updatable = false)
-    private String patientId;
-
     protected MessageEntity() { }
 
-    public MessageEntity(String patientId, Instant occuredAt)
+    public MessageEntity(String patientId, String patientVersionId, Instant patientUpdatedAt,
+        String otherPatientId)
     {
         this.patientId = patientId;
-        this.occuredAt = occuredAt;
+        this.patientVersionId = patientVersionId;
+        this.patientUpdatedAt = patientUpdatedAt;
+        this.otherPatientId = otherPatientId;
     }
 
     @PrePersist
     private void onPrePersist()
     {
-        occuredAt = Instant.now();
+        patientUpdatedAt = Instant.now();
     } 
 
     public Long getId()
@@ -45,9 +56,13 @@ public class MessageEntity
         return id;
     }
 
-    public Instant getOccuredAt()
+    public @Nullable String getPatientVersionId() {
+        return patientVersionId;
+    }
+
+    public Instant getPatientUpdatedAt()
     {
-        return occuredAt;
+        return patientUpdatedAt;
     }
 
     public Instant getSentAt()
@@ -63,5 +78,9 @@ public class MessageEntity
     public String getPatientId()
     {
         return patientId;
+    }
+
+    public @Nullable String getOtherPatientId() {
+        return otherPatientId;
     }
 }
