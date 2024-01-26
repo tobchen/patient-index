@@ -18,43 +18,80 @@ import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.exceptions.FhirClientConnectionException;
 import ca.uhn.fhir.rest.gclient.DateClientParam;
+import ca.uhn.fhir.rest.gclient.IClientExecutable;
+import ca.uhn.fhir.rest.gclient.IQuery;
 import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
 import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.context.propagation.TextMapSetter;
 
 @Component
 public class PatientPoller
 {
     private final Logger logger = LoggerFactory.getLogger(PatientPoller.class);
+
+    private final Tracer tracer;
+    private final TextMapPropagator propagator;
+    private final TextMapSetter<IClientExecutable<IQuery<Bundle>, Bundle>> otelSetter;
     
     private final MessageRepository repository;
 
-    private final MessageSender sender;
-
     private final IGenericClient client;
+
+    private final MessageSender sender;
 
     private final Instant checkFallback = Instant.now();
 
-    public PatientPoller(MessageRepository repository, MessageSender sender, IGenericClient client)
+    public PatientPoller(OpenTelemetry openTelemetry, MessageRepository repository,
+        IGenericClient client, MessageSender sender)
     {
+        this.tracer = openTelemetry.getTracer(PatientPoller.class.getName());
+        this.propagator = openTelemetry.getPropagators().getTextMapPropagator();
+        this.otelSetter = new TextMapSetter<IClientExecutable<IQuery<Bundle>,Bundle>>()
+        {
+            @Override
+            public void set(@Nullable IClientExecutable<IQuery<Bundle>, Bundle> carrier,
+                @Nullable String key, @Nullable String value)
+            {
+                if (carrier != null)
+                {
+                    carrier.withAdditionalHeader(key, value);
+                    logger.debug("Adding header: {}: {}", key, value);
+                }
+            }
+        };
+
         this.repository = repository;
-        this.sender = sender;
         this.client = client;
+        this.sender = sender;
     }
 
     @Scheduled(fixedDelay = 10000)
     public synchronized void poll()
     {
-        var mostRecentPatientUpdatedAt = getMostRecentMessagePatientUpdatedAt();
-        var checkFrom = mostRecentPatientUpdatedAt != null ? mostRecentPatientUpdatedAt : checkFallback;
+        var span = tracer.spanBuilder("PatientPoller.poll").startSpan();
 
-        var patientEvents = getPatientEvents(checkFrom);
-
-        for (var messageId : createMessages(patientEvents))
+        try (var scope = span.makeCurrent())
         {
-            if (messageId != null)
+            var mostRecentPatientUpdatedAt = getMostRecentMessagePatientUpdatedAt();
+            var checkFrom = mostRecentPatientUpdatedAt != null ? mostRecentPatientUpdatedAt : checkFallback;
+
+            var patientEvents = getPatientEvents(checkFrom);
+
+            for (var messageId : createMessages(patientEvents))
             {
-                sender.queue(messageId);
+                if (messageId != null)
+                {
+                    sender.queue(messageId);
+                }
             }
+        }
+        finally
+        {
+            span.end();
         }
     }
 
@@ -64,13 +101,16 @@ public class PatientPoller
 
         try
         {
-            var bundle = client.search()
+            var searchClient = client.search()
                 .forResource(Patient.class)
                 .where(new DateClientParam(Constants.PARAM_LASTUPDATED)
                     .after()
                     .millis(Date.from(checkFrom)))
-                .returnBundle(Bundle.class)
-                .execute();
+                .returnBundle(Bundle.class);
+            
+            propagator.inject(Context.current(), searchClient, otelSetter);
+            
+            var bundle = searchClient.execute();
             
             var entries = bundle.getEntry();
             if (entries != null)
