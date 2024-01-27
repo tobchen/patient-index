@@ -29,7 +29,10 @@ public class MessageEntity
 
     @Nullable
     @Column(updatable = false)
-    private String otherPatientId;
+    private String linkedPatientId;
+
+    @Column(nullable = false, updatable = false)
+    private Instant recordedAt;
 
     @Nullable
     private Instant sentAt;
@@ -42,7 +45,8 @@ public class MessageEntity
         this.patientId = patientId;
         this.patientVersionId = patientVersionId;
         this.patientUpdatedAt = patientUpdatedAt;
-        this.otherPatientId = otherPatientId;
+        this.linkedPatientId = otherPatientId;
+        this.recordedAt = Instant.now();
     }
 
     @PrePersist
@@ -80,7 +84,11 @@ public class MessageEntity
         return patientId;
     }
 
-    public @Nullable String getOtherPatientId() {
-        return otherPatientId;
+    public @Nullable String getLinkedPatientId() {
+        return linkedPatientId;
+    }
+
+    public Instant getRecordedAt() {
+        return recordedAt;
     }
 }

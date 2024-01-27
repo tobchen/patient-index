@@ -10,5 +10,7 @@ public interface MessageRepository extends Repository<MessageEntity, Long>
 {
     public Iterable<MessageEntity> saveAll(Iterable<MessageEntity> entities);
 
+    public Optional<MessageEntity> findById(Long id);
+
     public Optional<MessageEntity> findTopByOrderByPatientUpdatedAtDesc();
 }

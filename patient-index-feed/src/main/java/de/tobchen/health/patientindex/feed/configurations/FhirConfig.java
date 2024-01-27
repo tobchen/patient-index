@@ -24,7 +24,7 @@ public class FhirConfig
 
     @Bean
     public IGenericClient fhirClient(
-        FhirContext context, @Value("${patient-index.fhir.server}") String base)
+        FhirContext context, @Value("${patient-index-feed.fhir.server}") String base)
     {
         var client = context.newRestfulGenericClient(base);
         if (client == null)

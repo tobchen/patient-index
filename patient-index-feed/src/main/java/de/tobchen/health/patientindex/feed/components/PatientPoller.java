@@ -81,7 +81,9 @@ public class PatientPoller
 
             var patientEvents = getPatientEvents(checkFrom);
 
-            for (var messageId : createMessages(patientEvents))
+            var messageIds = createMessages(patientEvents);
+
+            for (var messageId : messageIds)
             {
                 if (messageId != null)
                 {
@@ -135,10 +137,10 @@ public class PatientPoller
                                     
                                     try
                                     {
-                                        var otherPatientId = getOtherPatientId(patient);
+                                        var otherPatientId = getLinkedPatientId(patient);
 
                                         patientEvents.add(new PatientEvent(
-                                            lastUpdated.toInstant(), patientId, versionId, otherPatientId));
+                                            patientId, lastUpdated.toInstant(), versionId, otherPatientId));
                                     }
                                     catch (IllegalArgumentException e)
                                     {
@@ -160,7 +162,7 @@ public class PatientPoller
                 }
             }
 
-            patientEvents.sort((a, b) -> { return a.occuredAt().compareTo(b.occuredAt()); });
+            patientEvents.sort((a, b) -> { return a.updatedAt().compareTo(b.updatedAt()); });
         }
         catch (FhirClientConnectionException e)
         {
@@ -178,7 +180,7 @@ public class PatientPoller
         for (var event : patientEvents)
         {
             entities.add(new MessageEntity(event.patientId(), event.versionId(),
-                event.occuredAt(), event.otherPatientId()));
+                event.updatedAt(), event.linkedPatientId()));
         }
 
         var savedEntities = repository.saveAll(entities);
@@ -193,9 +195,9 @@ public class PatientPoller
         return ids;
     }
 
-    private static @Nullable String getOtherPatientId(Patient patient) throws IllegalArgumentException
+    private static @Nullable String getLinkedPatientId(Patient patient) throws IllegalArgumentException
     {
-        String otherPatientId;
+        String linkedPatientId;
 
         var linkList = patient.getLink();
         if (linkList != null && linkList.size() > 0)
@@ -212,7 +214,7 @@ public class PatientPoller
                         var referenceId = referenceIdType.getIdPart();
                         if (referenceId != null)
                         {
-                            otherPatientId = referenceId;
+                            linkedPatientId = referenceId;
                         }
                         else
                         {
@@ -236,10 +238,10 @@ public class PatientPoller
         }
         else
         {
-            otherPatientId = null;
+            linkedPatientId = null;
         }
 
-        return otherPatientId;
+        return linkedPatientId;
     }
 
     @Transactional(readOnly = true)
@@ -249,6 +251,6 @@ public class PatientPoller
         return mostRecentMessage != null ? mostRecentMessage.getPatientUpdatedAt() : null;
     }
 
-    private record PatientEvent(Instant occuredAt, String patientId,
-        @Nullable String versionId, @Nullable String otherPatientId) { }
+    private record PatientEvent(String patientId, Instant updatedAt,
+        @Nullable String versionId, @Nullable String linkedPatientId) { }
 }
