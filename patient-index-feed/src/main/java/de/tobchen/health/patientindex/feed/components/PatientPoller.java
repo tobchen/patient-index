@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.Patient;
@@ -69,7 +70,7 @@ public class PatientPoller
         this.sender = sender;
     }
 
-    @Scheduled(fixedDelay = 10000)
+    @Scheduled(fixedDelay = 15, timeUnit = TimeUnit.SECONDS)
     public synchronized void poll()
     {
         var span = tracer.spanBuilder("PatientPoller.poll").startSpan();

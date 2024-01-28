@@ -1,6 +1,5 @@
 package de.tobchen.health.patientindex.services;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -22,7 +21,6 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
 import ca.uhn.fhir.rest.annotation.ConditionalUrlParam;
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.IdParam;
@@ -35,8 +33,7 @@ import ca.uhn.fhir.rest.annotation.Search;
 import ca.uhn.fhir.rest.annotation.Update;
 import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.MethodOutcome;
-import ca.uhn.fhir.rest.param.DateRangeParam;
-import ca.uhn.fhir.rest.param.ParamPrefixEnum;
+import ca.uhn.fhir.rest.param.DateParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
@@ -245,84 +242,37 @@ public class PatientProvider implements IResourceProvider
     @Search
     @Transactional(readOnly = true)
     public List<Patient> searchByLastUpdated(
-        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
+        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateParam datePatam)
     {
         var span = tracer.spanBuilder("PatientProvider.searchByLastUpdated").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            Instant startInstant;
-            var startParam = dateRangeParam.getLowerBound();
-            if (startParam != null)
+            var instant = datePatam.getValue().toInstant();
+            if (instant == null)
             {
-                if (!ParamPrefixEnum.GREATERTHAN.equals(startParam.getPrefix()))
-                {
-                    throw new InvalidRequestException("Only gt prefix for start date supported");
-                }
-                else if (!TemporalPrecisionEnum.MILLI.equals(startParam.getPrecision()))
-                {
-                    throw new InvalidRequestException("Only full precision supported");
-                }
-
-                startInstant = startParam.getValue().toInstant();
-            }
-            else
-            {
-                startInstant = null;
+                throw new InternalErrorException("Cannot get instant from date param");
             }
 
-            Instant endInstant;
-            var endParam = dateRangeParam.getUpperBound();
-            if (endParam != null)
+            Iterable<PatientEntity> entities;
+            switch (datePatam.getPrefix())
             {
-                if (!ParamPrefixEnum.LESSTHAN_OR_EQUALS.equals(endParam.getPrefix()))
-                {
-                    throw new InvalidRequestException("Only le prefix for end date supported");
-                }
-                else if (!TemporalPrecisionEnum.MILLI.equals(endParam.getPrecision()))
-                {
-                    throw new InvalidRequestException("Only full precision supported");
-                }
-
-                endInstant = endParam.getValue().toInstant();
-            }
-            else
-            {
-                endInstant = null;
+            case GREATERTHAN:
+                entities = repository.findByUpdatedAtGreaterThan(instant);
+                break;
+            case GREATERTHAN_OR_EQUALS:
+                entities = repository.findByUpdatedAtGreaterThanEqual(instant);
+                break;
+            default:
+                throw new InvalidRequestException("Unsupported date param prefix");
             }
 
             var result = new ArrayList<Patient>();
-
-            Iterable<PatientEntity> entities = null;
-
-            if (startInstant != null)
+            for (var entity : entities)
             {
-                if (endInstant != null)
+                if (entity != null)
                 {
-                    if (startInstant != null && endInstant != null)
-                    {
-                        entities =
-                            repository.findByUpdatedAtGreaterThanAndUpdatedAtLessThanEqual(startInstant, endInstant);
-                    }
-                }
-                else
-                {
-                    entities = repository.findByUpdatedAtGreaterThan(startInstant);
-                }
-            }
-            else if (endInstant != null)
-            {
-                entities = repository.findByUpdatedAtLessThanEqual(endInstant);
-            }
-
-            if (entities != null)
-            {
-                for (var entity : entities)
-                {
-                    if (entity != null)
-                    {
-                        result.add(resourceFromEntity(entity));
-                    }
+                    result.add(resourceFromEntity(entity));
                 }
             }
 
@@ -514,6 +464,10 @@ public class PatientProvider implements IResourceProvider
         do
         {
             resourceId = UUID.randomUUID().toString();
+            if (resourceId == null)
+            {
+                throw new InternalErrorException("Cannot generate uuid string");
+            }
         }
         while (repository.existsByResourceId(resourceId));
 
