@@ -1,10 +1,13 @@
 package de.tobchen.health.patientindex.feed.model.repositories;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import org.springframework.data.repository.Repository;
 
 import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
+import de.tobchen.health.patientindex.feed.model.projections.MessagePatientIdAndVersionId;
+import de.tobchen.health.patientindex.feed.model.projections.MessagePatientUpdatedAt;
 
 public interface MessageRepository extends Repository<MessageEntity, Long>
 {
@@ -12,5 +15,7 @@ public interface MessageRepository extends Repository<MessageEntity, Long>
 
     public Optional<MessageEntity> findById(Long id);
 
-    public Optional<MessageEntity> findTopByOrderByPatientUpdatedAtDesc();
+    public Optional<MessagePatientUpdatedAt> findTopByOrderByPatientUpdatedAtDesc();
+
+    public Iterable<MessagePatientIdAndVersionId> findByPatientUpdatedAtGreaterThanEqual(Instant instant);
 }

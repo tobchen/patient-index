@@ -6,11 +6,14 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
+import javax.persistence.Index;
 import javax.persistence.PrePersist;
+import javax.persistence.Table;
 
 import org.springframework.lang.Nullable;
 
 @Entity
+@Table(indexes = { @Index(columnList = "patientUpdatedAt") })
 public class MessageEntity
 {
     @Id
@@ -20,8 +23,7 @@ public class MessageEntity
     @Column(nullable = false, updatable = false)
     private String patientId;
 
-    @Nullable
-    @Column(updatable = false)
+    @Column(nullable = false, updatable = false)
     private String patientVersionId;
 
     @Column(nullable = false, updatable = false)
@@ -40,12 +42,12 @@ public class MessageEntity
     protected MessageEntity() { }
 
     public MessageEntity(String patientId, String patientVersionId, Instant patientUpdatedAt,
-        String otherPatientId)
+        @Nullable String linkedPatientId)
     {
         this.patientId = patientId;
         this.patientVersionId = patientVersionId;
         this.patientUpdatedAt = patientUpdatedAt;
-        this.linkedPatientId = otherPatientId;
+        this.linkedPatientId = linkedPatientId;
         this.recordedAt = Instant.now();
     }
 
@@ -60,7 +62,7 @@ public class MessageEntity
         return id;
     }
 
-    public @Nullable String getPatientVersionId() {
+    public String getPatientVersionId() {
         return patientVersionId;
     }
 
