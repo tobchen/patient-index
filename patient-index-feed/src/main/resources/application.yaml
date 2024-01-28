@@ -23,3 +23,6 @@ patient-index-feed:
         oid: 7.8.9
       facility:
         oid: 10.11.12
+    server:
+      host: localhost
+      port: 6060

@@ -1,6 +1,6 @@
 from typing import Optional, Iterable
 import sys
-from socketserver import StreamRequestHandler, TCPServer
+from socketserver import TCPServer, BaseRequestHandler
 import uuid
 
 
@@ -10,7 +10,7 @@ def log_segments(info: str, segments: Iterable[str]):
         print(segment)
 
 
-class MllpHandler(StreamRequestHandler):
+class MllpHandler(BaseRequestHandler):
     def handle(self) -> None:
         message = self.receive_message()
         
@@ -68,15 +68,16 @@ class MllpHandler(StreamRequestHandler):
     def receive_message(self) -> Optional[str]:
         data = bytearray()
 
-        while len(data) < 2 or data[-2] != "\x1c" or data[-1] != "\x0d":
-            data_read = self.rfile.read(1024)
-            
+        while len(data) < 2 or data[-2] != 0x1c or data[-1] != 0x0d:
+            data_read = self.request.recv(1024)
+
             if len(data_read) == 0:
                 if len(data) > 0:
                     raise IOError("EOF without end block character and carriage return sent")
                 break
             
-            if len(data) == 0 and data_read[0] != "\x0b":
+            if len(data) == 0 and data_read[0] != 0x0b:
+                print(data_read[0], b"\x0b")
                 raise IOError("No start block character sent")
 
             data.extend(data_read)
@@ -84,10 +85,15 @@ class MllpHandler(StreamRequestHandler):
         return None if len(data) == 0 else data[1:-2].decode()
     
     def send_message(self, message: str):
-        self.wfile.write(b"\x0b")
-        self.wfile.write(message.encode())
-        self.wfile.write(b"\x1c")
-        self.wfile.write(b"\x0d")
+        data = bytearray()
+        
+        data.append(0x0b)
+        data.extend(message.encode())
+        data.append(0x1c)
+        data.append(0x0d)
+
+        self.request.sendall(data)
+
 
 
 if __name__ == "__main__":

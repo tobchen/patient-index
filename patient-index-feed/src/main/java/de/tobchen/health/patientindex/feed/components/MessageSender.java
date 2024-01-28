@@ -15,8 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.HapiContext;
+import ca.uhn.hl7v2.app.Connection;
+import ca.uhn.hl7v2.llp.LLPException;
 import ca.uhn.hl7v2.model.AbstractMessage;
 import ca.uhn.hl7v2.model.DataTypeException;
+import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.model.v231.datatype.CX;
 import ca.uhn.hl7v2.model.v231.message.ADT_A01;
 import ca.uhn.hl7v2.model.v231.message.ADT_A39;
@@ -38,15 +41,26 @@ public class MessageSender
 
     private final MessageRepository repository;
 
+    private final String serverHost;
+    private final int serverPort;
+
     private final String pidOid;
     private final String sendingAppOid;
     private final String sendingFacOid;
     private final String receivingAppOid;
     private final String receivingFacOid;
+
+    // TODO Set timeout from config
+    private final long retryTimeout = 15000;
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    @Nullable
+    private Connection connection;
+
     public MessageSender(OpenTelemetry openTelemetry, HapiContext context, MessageRepository repository,
+        @Value("${patient-index-feed.hl7v2.server.host}") String serverHost,
+        @Value("${patient-index-feed.hl7v2.server.port}") int serverPort,
         @Value("${patient-index-feed.hl7v2.pid.oid}") String pidOid,
         @Value("${patient-index-feed.hl7v2.sender.application.oid}") String sendingAppOid,
         @Value("${patient-index-feed.hl7v2.sender.facility.oid}") String sendingFacOid,
@@ -58,6 +72,9 @@ public class MessageSender
         this.context = context;
 
         this.repository = repository;
+
+        this.serverHost = serverHost;
+        this.serverPort = serverPort;
 
         this.pidOid = pidOid;
         this.sendingAppOid = sendingAppOid;
@@ -79,13 +96,36 @@ public class MessageSender
 
         try (var scope = span.makeCurrent())
         {
+            logger.debug("Trying to send message {}", messageId);
+
             var rawMessage = getRawMessage(messageId);
             if (rawMessage != null && !rawMessage.wasSent())
             {
                 var hl7v2Message = createHl7Message(rawMessage);
                 if (hl7v2Message != null)
                 {
-                    // TODO Send message
+                    while (true)
+                    {
+                        var response = sendMessage(hl7v2Message);
+                        if (response != null)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            logger.info("Waiting for {} milliseconds", retryTimeout);
+                            try
+                            {
+                                Thread.sleep(retryTimeout);
+                            }
+                            catch (InterruptedException e)
+                            {
+                                logger.warn("Retry timeout interrupted", e);
+                            }
+                        }
+                    }
+
+                    // TODO Update message status
                 }
                 else
                 {
@@ -108,13 +148,12 @@ public class MessageSender
     {
         var entity = repository.findById(id).orElse(null);
 
-        return entity != null ? new RawMessage(entity.getPatientId(), entity.getPatientUpdatedAt(),
+        return entity != null ? new RawMessage(entity.getId(), entity.getPatientId(), entity.getPatientUpdatedAt(),
             entity.getLinkedPatientId(), entity.getRecordedAt(), entity.getSentAt() != null) : null;
     }
 
     private @Nullable AbstractMessage createHl7Message(RawMessage rawMessage)
     {
-        // TODO Get processing id from settings
         // TODO Set rawMessage id as hl7v2 message id
         AbstractMessage result;
 
@@ -123,10 +162,8 @@ public class MessageSender
             var linkedPatientId = rawMessage.linkedPatientId;
             if (linkedPatientId == null)
             {
-                var message = new ADT_A01();
-                message.initQuickstart("ADT", "A01", "P");
-                
-                setSegment(message.getMSH());
+                var message = new ADT_A01();                
+                setSegment(message.getMSH(), "A01", rawMessage.id());
                 setSegment(message.getEVN(), rawMessage.recordedAt(), rawMessage.patientUpdatedAt());
                 setSegment(message.getPID(), rawMessage.patientId());
                 message.getPV1().getPatientClass().setValue("N");
@@ -136,9 +173,7 @@ public class MessageSender
             else
             {
                 var message = new ADT_A39();
-                message.initQuickstart("ADT", "A40", "P");
-
-                setSegment(message.getMSH());
+                setSegment(message.getMSH(), "A40", rawMessage.id());
                 setSegment(message.getEVN(), rawMessage.recordedAt(), rawMessage.patientUpdatedAt());
                 var patientGroup = message.getPIDPD1MRGPV1();
                 setSegment(patientGroup.getPID(), rawMessage.linkedPatientId());
@@ -147,7 +182,7 @@ public class MessageSender
                 result = message;
             }
         }
-        catch (HL7Exception | IOException e)
+        catch (HL7Exception e)
         {
             logger.error("Cannot create HL7v2 message", e);
             result = null;
@@ -156,10 +191,13 @@ public class MessageSender
         return result;
     }
 
-    private void setSegment(@Nullable MSH msh) throws DataTypeException
+    private void setSegment(@Nullable MSH msh, String triggerEvent, Long messageId) throws DataTypeException
     {
         if (msh != null)
         {
+            msh.getFieldSeparator().setValue("|");
+            msh.getEncodingCharacters().setValue("^~\\&");
+
             var sendingApp = msh.getSendingApplication();
             sendingApp.getUniversalID().setValue(sendingAppOid);
             sendingApp.getUniversalIDType().setValue("ISO");
@@ -172,6 +210,19 @@ public class MessageSender
             var receivingFac = msh.getReceivingFacility();
             receivingFac.getUniversalID().setValue(receivingFacOid);
             receivingFac.getUniversalIDType().setValue("ISO");
+
+            msh.getDateTimeOfMessage().getTimeOfAnEvent().setValue(new Date());
+
+            var messageType = msh.getMessageType();
+            messageType.getMessageType().setValue("ADT");
+            messageType.getTriggerEvent().setValue(triggerEvent);
+
+            msh.getMessageControlID().setValue(messageId.toString());
+
+            // TODO Get processing id from settings
+            msh.getProcessingID().getProcessingID().setValue("P");
+
+            msh.getVersionID().getVersionID().setValue(msh.getMessage().getVersion());
         }
     }
 
@@ -204,6 +255,42 @@ public class MessageSender
         }
     }
 
+    private @Nullable Message sendMessage(Message message)
+    {
+        Message response = null;
+
+        var connection = this.connection;
+
+        if (connection == null || !connection.isOpen())
+        {
+            this.connection = connection = null;
+
+            try
+            {
+                this.connection = connection = context.newClient(serverHost, serverPort, false);
+            }
+            catch (HL7Exception e)
+            {
+                logger.error("Cannot connect", e);
+            }
+        }
+
+        if (connection != null)
+        {
+            var initiator = connection.getInitiator();
+            try
+            {
+                response = initiator.sendAndReceive(message);
+            }
+            catch (HL7Exception | LLPException | IOException e)
+            {
+                logger.error("Cannot send message or receive response", e);
+            }
+        }
+
+        return response;
+    }
+
     private class MessageTask implements Runnable
     {
         private Long messageId;
@@ -224,6 +311,6 @@ public class MessageSender
         }
     }
 
-    private record RawMessage(String patientId, Instant patientUpdatedAt,
+    private record RawMessage(Long id, String patientId, Instant patientUpdatedAt,
         @Nullable String linkedPatientId, Instant recordedAt, boolean wasSent) { }
 }
