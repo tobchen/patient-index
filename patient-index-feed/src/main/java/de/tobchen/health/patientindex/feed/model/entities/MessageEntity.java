@@ -12,8 +12,10 @@ import javax.persistence.Table;
 
 import org.springframework.lang.Nullable;
 
+import de.tobchen.health.patientindex.feed.model.enums.MessageStatus;
+
 @Entity
-@Table(indexes = { @Index(columnList = "patientUpdatedAt") })
+@Table(indexes = { @Index(columnList = "patientUpdatedAt"), @Index(columnList = "status") })
 public class MessageEntity
 {
     @Id
@@ -36,8 +38,8 @@ public class MessageEntity
     @Column(nullable = false, updatable = false)
     private Instant recordedAt;
 
-    @Nullable
-    private Instant sentAt;
+    @Column(nullable = false)
+    private MessageStatus status;
 
     protected MessageEntity() { }
 
@@ -49,6 +51,7 @@ public class MessageEntity
         this.patientUpdatedAt = patientUpdatedAt;
         this.linkedPatientId = linkedPatientId;
         this.recordedAt = Instant.now();
+        this.status = MessageStatus.QUEUED;
     }
 
     @PrePersist
@@ -71,16 +74,6 @@ public class MessageEntity
         return patientUpdatedAt;
     }
 
-    public Instant getSentAt()
-    {
-        return sentAt;
-    }
-
-    public void setSentAt(Instant sentAt)
-    {
-        this.sentAt = sentAt;
-    }
-
     public String getPatientId()
     {
         return patientId;
@@ -92,5 +85,13 @@ public class MessageEntity
 
     public Instant getRecordedAt() {
         return recordedAt;
+    }
+
+    public MessageStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(MessageStatus status) {
+        this.status = status;
     }
 }

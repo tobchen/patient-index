@@ -11,6 +11,8 @@ import de.tobchen.health.patientindex.feed.model.projections.MessagePatientUpdat
 
 public interface MessageRepository extends Repository<MessageEntity, Long>
 {
+    public MessageEntity save(MessageEntity entity);
+    
     public Iterable<MessageEntity> saveAll(Iterable<MessageEntity> entities);
 
     public Optional<MessageEntity> findById(Long id);

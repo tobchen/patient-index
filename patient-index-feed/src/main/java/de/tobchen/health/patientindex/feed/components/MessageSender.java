@@ -17,7 +17,6 @@ import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.app.Connection;
 import ca.uhn.hl7v2.llp.LLPException;
-import ca.uhn.hl7v2.model.AbstractMessage;
 import ca.uhn.hl7v2.model.DataTypeException;
 import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.model.v231.datatype.CX;
@@ -26,8 +25,11 @@ import ca.uhn.hl7v2.model.v231.message.ADT_A39;
 import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
+import ca.uhn.hl7v2.parser.PipeParser;
+import de.tobchen.health.patientindex.feed.model.enums.MessageStatus;
 import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 
 @Component
@@ -54,6 +56,8 @@ public class MessageSender
     private final long retryTimeout = 15000;
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private final PipeParser parser = new PipeParser();
 
     @Nullable
     private Connection connection;
@@ -99,14 +103,28 @@ public class MessageSender
             logger.debug("Trying to send message {}", messageId);
 
             var rawMessage = getRawMessage(messageId);
-            if (rawMessage != null && !rawMessage.wasSent())
+            if (rawMessage != null && rawMessage.status() == MessageStatus.QUEUED)
             {
                 var hl7v2Message = createHl7Message(rawMessage);
                 if (hl7v2Message != null)
                 {
+                    try
+                    {
+                        span.setAttribute("mllp.message", parser.encode(hl7v2Message).replace("\r", "\n"));
+                    }
+                    catch (HL7Exception e)
+                    {
+                        logger.error("Cannot encode message");
+                    }
+
+                    Message response;
+                    long attemptCount = 0;
+
                     while (true)
                     {
-                        var response = sendMessage(hl7v2Message);
+                        ++attemptCount;
+
+                        response = sendMessage(hl7v2Message);
                         if (response != null)
                         {
                             break;
@@ -125,16 +143,27 @@ public class MessageSender
                         }
                     }
 
-                    // TODO Update message status
+                    setMessageStatus(messageId, MessageStatus.SENT);
+
+                    span.setAttribute("mllp.attempts", attemptCount);
+                    try
+                    {
+                        span.setAttribute("mllp.response", parser.encode(response).replace("\r", "\n"));
+                    }
+                    catch (HL7Exception e)
+                    {
+                        logger.error("Cannot encode response");
+                    }
                 }
                 else
                 {
-                    // TODO Set message status to error
+                    setMessageStatus(messageId, MessageStatus.FAILED);
+                    span.setStatus(StatusCode.ERROR, "Failed to create HL7v2 message");
                 }
             }
             else
             {
-                logger.info("Not sending message {}", messageId);
+                logger.info("Skipping message {}", messageId);
             }
         }
         finally
@@ -149,13 +178,12 @@ public class MessageSender
         var entity = repository.findById(id).orElse(null);
 
         return entity != null ? new RawMessage(entity.getId(), entity.getPatientId(), entity.getPatientUpdatedAt(),
-            entity.getLinkedPatientId(), entity.getRecordedAt(), entity.getSentAt() != null) : null;
+            entity.getLinkedPatientId(), entity.getRecordedAt(), entity.getStatus()) : null;
     }
 
-    private @Nullable AbstractMessage createHl7Message(RawMessage rawMessage)
+    private @Nullable Message createHl7Message(RawMessage rawMessage)
     {
-        // TODO Set rawMessage id as hl7v2 message id
-        AbstractMessage result;
+        Message result;
 
         try
         {
@@ -240,7 +268,7 @@ public class MessageSender
         if (pid != null)
         {
             setPidCx(pid.getPatientIdentifierList(0), patientId);
-            pid.getPatientName(0).getFamilyLastName().getFamilyName().setValue(" ");
+            pid.getPatientName(0).getFamilyLastName().getFamilyName().setValue("_");
         }
     }
 
@@ -291,6 +319,17 @@ public class MessageSender
         return response;
     }
 
+    @Transactional
+    private void setMessageStatus(Long id, MessageStatus status)
+    {
+        var entity = repository.findById(id).orElse(null);
+        if (entity != null)
+        {
+            entity.setStatus(status);
+            repository.save(entity);
+        }
+    }
+
     private class MessageTask implements Runnable
     {
         private Long messageId;
@@ -312,5 +351,5 @@ public class MessageSender
     }
 
     private record RawMessage(Long id, String patientId, Instant patientUpdatedAt,
-        @Nullable String linkedPatientId, Instant recordedAt, boolean wasSent) { }
+        @Nullable String linkedPatientId, Instant recordedAt, MessageStatus status) { }
 }

@@ -12,9 +12,14 @@ def log_segments(info: str, segments: Iterable[str]):
 
 class MllpHandler(BaseRequestHandler):
     def handle(self) -> None:
-        message = self.receive_message()
-        
-        if message is not None:
+        print("Connection opened")
+
+        while True:
+            message = self.receive_message()
+
+            if message is None:
+                break
+
             segments = message.split("\r")
 
             log_segments("Received", segments)
@@ -64,6 +69,8 @@ class MllpHandler(BaseRequestHandler):
             log_segments("Sending", [response_msh, response_msa])
 
             self.send_message(f"{response_msh}\r{response_msa}\r")
+
+        print("Connection closed")
 
     def receive_message(self) -> Optional[str]:
         data = bytearray()
