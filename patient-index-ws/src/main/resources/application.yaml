@@ -1,1 +1,12 @@
+logging:
+  level:
+    de.tobchen: trace
 
+server.port: 9080
+
+patient-index-ws:
+  fhir:
+    server: http://localhost:8080/fhir/r5
+  hl7v3:
+    pid:
+      oid: 0.0.0

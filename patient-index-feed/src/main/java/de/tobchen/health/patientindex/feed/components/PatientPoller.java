@@ -22,7 +22,6 @@ import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.exceptions.FhirClientConnectionException;
 import ca.uhn.fhir.rest.gclient.DateClientParam;
-import ca.uhn.fhir.rest.gclient.IClientExecutable;
 import ca.uhn.fhir.rest.gclient.IQuery;
 import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
 import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
@@ -39,7 +38,7 @@ public class PatientPoller
 
     private final Tracer tracer;
     private final TextMapPropagator propagator;
-    private final TextMapSetter<IClientExecutable<IQuery<Bundle>, Bundle>> otelSetter;
+    private final TextMapSetter<IQuery<Bundle>> otelSetter;
     
     private final MessageRepository repository;
 
@@ -54,16 +53,15 @@ public class PatientPoller
     {
         this.tracer = openTelemetry.getTracer(PatientPoller.class.getName());
         this.propagator = openTelemetry.getPropagators().getTextMapPropagator();
-        this.otelSetter = new TextMapSetter<IClientExecutable<IQuery<Bundle>,Bundle>>()
+        this.otelSetter = new TextMapSetter<IQuery<Bundle>>()
         {
             @Override
-            public void set(@Nullable IClientExecutable<IQuery<Bundle>, Bundle> carrier,
+            public void set(@Nullable IQuery<Bundle> carrier,
                 @Nullable String key, @Nullable String value)
             {
                 if (carrier != null)
                 {
                     carrier.withAdditionalHeader(key, value);
-                    logger.debug("Adding header: {}: {}", key, value);
                 }
             }
         };
@@ -106,16 +104,16 @@ public class PatientPoller
 
         try
         {
-            var searchClient = client.search()
+            var query = client.search()
                 .forResource(Patient.class)
                 .where(new DateClientParam(Constants.PARAM_LASTUPDATED)
                     .after()
                     .millis(Date.from(setup.searchFrom())))
                 .returnBundle(Bundle.class);
             
-            propagator.inject(Context.current(), searchClient, otelSetter);
+            propagator.inject(Context.current(), query, otelSetter);
             
-            var bundle = searchClient.execute();
+            var bundle = query.execute();
             
             var entries = bundle.getEntry();
             if (entries != null)

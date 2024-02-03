@@ -1,11 +1,13 @@
 package de.tobchen.health.patientindex.ws.endpoints;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.RequestPayload;
 import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
@@ -17,6 +19,7 @@ import de.tobchen.health.patientindex.ws.model.schemas.CS;
 import de.tobchen.health.patientindex.ws.model.schemas.II;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01Acknowledgement;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01TargetMessage;
+import de.tobchen.health.patientindex.ws.model.schemas.MFMIMT700711UV01Custodian;
 import de.tobchen.health.patientindex.ws.model.schemas.MFMIMT700711UV01QueryAck;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201309UV02;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201309UV02QUQIMT021001UV01ControlActProcess;
@@ -24,14 +27,27 @@ import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01ControlActProcess;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01Subject1;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01Subject2;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAMT201304UV02Patient;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAMT201307UV02QueryByParameter;
+import de.tobchen.health.patientindex.ws.model.schemas.ParticipationTargetSubject;
 import de.tobchen.health.patientindex.ws.model.schemas.TS;
 import de.tobchen.health.patientindex.ws.model.schemas.XActMoodIntentEvent;
+import de.tobchen.health.patientindex.ws.services.QueryService;
 
 @Endpoint
 public class PixQueryEndpoint
 {
-    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private final Logger logger = LoggerFactory.getLogger(PixQueryEndpoint.class);
+    
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssZZ");
+
+    private final QueryService queryService;
+
+    public PixQueryEndpoint(QueryService queryService)
+    {
+        this.queryService = queryService;
+    }
 
     @SoapAction("urn:hl7-org:v3:PRPA_IN201309UV02")
     public @ResponsePayload PRPAIN201310UV02 query(@RequestPayload PRPAIN201309UV02 request)
@@ -40,7 +56,7 @@ public class PixQueryEndpoint
         id.setRoot(UUID.randomUUID().toString());
 
         var creationTime = new TS();
-        creationTime.setValue(formatter.format(LocalDateTime.now()));
+        creationTime.setValue(formatter.format(ZonedDateTime.now()));
 
         var interactionId = new II();
         interactionId.setRoot("2.16.840.1.113883.1.6");
@@ -126,14 +142,56 @@ public class PixQueryEndpoint
     {
         PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent registrationEvent;
 
-        var queryParams = getInputParams(queryByParameter);
+        var queryParams = getQueryParams(queryByParameter);
+        var queriedSystems = queryParams.queriedSystems();
 
-        registrationEvent = null;
+        var patient = new PRPAMT201304UV02Patient();
+        var patientIdList = patient.getId();
+
+        var otherIdentifiers = queryService.findOtherIdentifiers(queryParams.queriedIdentifier());
+        for (var identifier : otherIdentifiers)
+        {
+            if (queriedSystems.isEmpty() || queriedSystems.contains(identifier.getRoot()))
+            {
+                patientIdList.add(identifier);
+            }
+        }
+
+        if (!patientIdList.isEmpty())
+        {
+            var patientStatusCode = new CS();
+            patientStatusCode.setCode("active");
+
+            patient.getClassCode().add("PAT");
+            patient.setStatusCode(patientStatusCode);
+
+            var statusCode = new CS();
+            statusCode.setCode("active");
+
+            var subject = new PRPAIN201310UV02MFMIMT700711UV01Subject2();
+            subject.setTypeCode(ParticipationTargetSubject.SBJ);
+            subject.setPatient(patient);
+
+            var custodian = new MFMIMT700711UV01Custodian();
+            custodian.getTypeCode().add("CST");
+            // TODO Assigned entity
+
+            registrationEvent = new PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent();
+            registrationEvent.getClassCode().add("REG");
+            registrationEvent.getMoodCode().add("EVN");
+            registrationEvent.setStatusCode(statusCode);
+            registrationEvent.setSubject1(subject);
+            registrationEvent.setCustodian(custodian);
+        }
+        else
+        {
+            registrationEvent = null;
+        }
 
         return registrationEvent;
     }
 
-    private QueryParams getInputParams(PRPAMT201307UV02QueryByParameter queryByParameter)
+    private QueryParams getQueryParams(PRPAMT201307UV02QueryByParameter queryByParameter)
     {
         var parameterList = queryByParameter.getParameterList();
         if (parameterList == null)

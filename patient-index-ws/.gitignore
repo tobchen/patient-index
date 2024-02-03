@@ -33,7 +33,9 @@ build/
 .vscode/
 
 ### HL7 Schemas for Licensing Reasons :/ ###
-src/main/resources/schemas/hl7v3-ne2008/
+/src/main/resources/schemas/hl7v3-ne2008/
 
 ### Other ###
-src/main/resources/wsdl/reference.wsdl
+/src/main/resources/wsdl/reference.wsdl
+
+/soap-ui-test.xml
