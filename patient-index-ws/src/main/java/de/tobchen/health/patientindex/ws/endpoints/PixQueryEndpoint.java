@@ -1,48 +1,141 @@
 package de.tobchen.health.patientindex.ws.endpoints;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.RequestPayload;
 import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
 import org.springframework.ws.soap.server.endpoint.annotation.SoapAction;
 
+import de.tobchen.health.patientindex.ws.model.schemas.ActClassControlAct;
+import de.tobchen.health.patientindex.ws.model.schemas.CD;
+import de.tobchen.health.patientindex.ws.model.schemas.CS;
+import de.tobchen.health.patientindex.ws.model.schemas.II;
+import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01Acknowledgement;
+import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01TargetMessage;
+import de.tobchen.health.patientindex.ws.model.schemas.MFMIMT700711UV01QueryAck;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201309UV02;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201309UV02QUQIMT021001UV01ControlActProcess;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01ControlActProcess;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201310UV02MFMIMT700711UV01Subject1;
+import de.tobchen.health.patientindex.ws.model.schemas.PRPAMT201307UV02QueryByParameter;
+import de.tobchen.health.patientindex.ws.model.schemas.TS;
+import de.tobchen.health.patientindex.ws.model.schemas.XActMoodIntentEvent;
 
 @Endpoint
 public class PixQueryEndpoint
 {
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
     @SoapAction("urn:hl7-org:v3:PRPA_IN201309UV02")
     public @ResponsePayload PRPAIN201310UV02 query(@RequestPayload PRPAIN201309UV02 request)
     {
-        var inputParams = getInputParams(request.getControlActProcess());
+        var id = new II();
+        id.setRoot(UUID.randomUUID().toString());
 
-        return null;
+        var creationTime = new TS();
+        creationTime.setValue(formatter.format(LocalDateTime.now()));
+
+        var interactionId = new II();
+        interactionId.setRoot("2.16.840.1.113883.1.6");
+        interactionId.setExtension("PRPA_IN201310UV02");
+
+        var processingModeCode = new CS();
+        processingModeCode.setCode("T");
+
+        var acceptAckCode = new CS();
+        acceptAckCode.setCode("NE");
+
+        // TODO Sender
+
+        // TODO Receiver
+
+        var acknowledgement = createAcknowledgement(request.getId());
+
+        var controlActProcess = createControlProcessAct(request.getControlActProcess());
+
+        var response = new PRPAIN201310UV02();
+
+        response.setId(id);
+        response.setCreationTime(creationTime);
+        response.setInteractionId(interactionId);
+        response.setProcessingCode(request.getProcessingCode());
+        response.setProcessingModeCode(processingModeCode);
+        response.setAcceptAckCode(acceptAckCode);
+        response.getAcknowledgement().add(acknowledgement);
+        response.setControlActProcess(controlActProcess);
+
+        return response;
     }
 
-    private InputParams getInputParams(PRPAIN201309UV02QUQIMT021001UV01ControlActProcess controlActProcess)
+    private PRPAIN201310UV02MFMIMT700711UV01ControlActProcess createControlProcessAct(
+        PRPAIN201309UV02QUQIMT021001UV01ControlActProcess requestControlActProcess)
     {
-        if (controlActProcess == null)
+        if (requestControlActProcess == null)
         {
-            throw new IllegalArgumentException("Control act process is null");
+            throw new IllegalArgumentException("Missing control act process");
         }
 
-        var queryByParameter = controlActProcess.getQueryByParameter();
+        var queryByParameter = requestControlActProcess.getQueryByParameter();
         if (queryByParameter == null)
         {
-            throw new RuntimeException("Missing QueryByParameter");
+            throw new RuntimeException("Missing query by parameter");
         }
 
         var queryByParameterValue = queryByParameter.getValue();
         if (queryByParameterValue == null)
         {
-            throw new RuntimeException("Missing QueryByParameter value");
+            throw new RuntimeException("Invalid query by parameter value");
         }
 
-        var parameterList = queryByParameterValue.getParameterList();
+        var registrationEvent = createRegistrationEvent(queryByParameterValue);
+
+        var triggerCode = new CD();
+        triggerCode.setCode("PRPA_TE201310UV02");
+
+        var queryResponseCode = new CS();
+        queryResponseCode.setCode(registrationEvent != null ? "OK" : "NF");
+
+        var queryAck = new MFMIMT700711UV01QueryAck();
+        queryAck.setQueryId(queryByParameterValue.getQueryId());
+        queryAck.setQueryResponseCode(queryResponseCode);
+
+        var subject = new PRPAIN201310UV02MFMIMT700711UV01Subject1();
+        subject.getTypeCode().add("SUBJ");
+        subject.setRegistrationEvent(registrationEvent);
+
+        var controlProcessAct = new PRPAIN201310UV02MFMIMT700711UV01ControlActProcess();
+        controlProcessAct.setClassCode(ActClassControlAct.CACT);
+        controlProcessAct.setMoodCode(XActMoodIntentEvent.EVN);
+        controlProcessAct.setCode(triggerCode);
+        controlProcessAct.getSubject().add(subject);
+        controlProcessAct.setQueryAck(queryAck);
+        controlProcessAct.setQueryByParameter(queryByParameter);
+
+        return controlProcessAct;
+    }
+
+    private PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent createRegistrationEvent(
+        PRPAMT201307UV02QueryByParameter queryByParameter)
+    {
+        PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent registrationEvent;
+
+        var queryParams = getInputParams(queryByParameter);
+
+        registrationEvent = null;
+
+        return registrationEvent;
+    }
+
+    private QueryParams getInputParams(PRPAMT201307UV02QueryByParameter queryByParameter)
+    {
+        var parameterList = queryByParameter.getParameterList();
         if (parameterList == null)
         {
             throw new RuntimeException("Missing parameter list");
@@ -72,9 +165,7 @@ public class PixQueryEndpoint
             throw new RuntimeException("Missing patient identifier value");
         }
 
-        var patientSystem = patientIdentifierValue.getRoot();
-        var patientValue = patientIdentifierValue.getExtension();
-        if (patientSystem == null || patientValue == null)
+        if (patientIdentifierValue.getExtension() == null || patientIdentifierValue.getRoot() == null)
         {
             throw new RuntimeException("Invalid patient identifier value");
         }
@@ -100,8 +191,32 @@ public class PixQueryEndpoint
             }
         }
 
-        return new InputParams(patientSystem, patientValue, queriedSystems);
+        return new QueryParams(patientIdentifierValue, queriedSystems);
     }
 
-    private record InputParams(String system, String value, Set<String> queriedSystems) { }
+    private MCCIMT000300UV01Acknowledgement createAcknowledgement(II requestId)
+    {
+        /*
+         * Super weird:
+         * The IHE PIXV3 Query specification mentions AA, AE:
+         * https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3.45.4.2.3
+         * But the IHE example query responses use CA
+         * 
+         * I'm sticking with AA because specification > example
+         */
+
+        var typeCode = new CS();
+        typeCode.setCode("AA");
+
+        var targetMessage = new MCCIMT000300UV01TargetMessage();
+        targetMessage.setId(requestId);
+
+        var acknowledgement = new MCCIMT000300UV01Acknowledgement();
+        acknowledgement.setTypeCode(typeCode);
+        acknowledgement.setTargetMessage(targetMessage);
+
+        return acknowledgement;
+    }
+
+    private record QueryParams(II queriedIdentifier, Set<String> queriedSystems) { }
 }
