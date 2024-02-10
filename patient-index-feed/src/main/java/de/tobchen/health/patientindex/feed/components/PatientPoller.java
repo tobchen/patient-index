@@ -1,7 +1,6 @@
 package de.tobchen.health.patientindex.feed.components;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;

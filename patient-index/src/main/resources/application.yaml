@@ -4,5 +4,3 @@ logging:
       hibernate:
         SQL: debug
     de.tobchen: trace
-
-server.port: 8080
