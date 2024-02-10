@@ -10,7 +10,11 @@ The *Patient Index* system is made of of three components:
 * *Patient Index* Feed, an optional poller enabling IHE Patient Identity Feed (ITI-8) conformant messaging of new (or updated) or merged patient resources
 * *Patient Index* Web Service, an optional web service enabling IHE PIXV3 Query (ITI-45) querying of patient resources
 
+![Patient Index Architecture](./architecture.svg)
+
 ### Patient Index (Main Component)
+
+The *Patient Index* is a very minimal FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
 
 #### Configuration
 
@@ -38,6 +42,8 @@ The following properties are required and have no defaults:
 ### Patient Index Web Service
 
 The *Patient Index* Web Service queries the *Patient Index* on incoming requests.
+
+While the *Patient Index* itself allows all kinds of identifier system URIs, this web service only recognizes systems of type OID (e.g. `urn:oid:0.0.0`). For FHIR Patient ids a system OID needs to be configured.
 
 #### Configuration
 
