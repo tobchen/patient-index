@@ -2,12 +2,15 @@ from typing import Optional, Iterable
 import sys
 from socketserver import TCPServer, BaseRequestHandler
 import uuid
+from datetime import datetime, timezone
 
 
 def log_segments(info: str, segments: Iterable[str]):
     print(f"{info}:")
     for segment in segments:
-        print(segment)
+        if len(segment) > 0:
+            print(segment)
+    print("")
 
 
 class MllpHandler(BaseRequestHandler):
@@ -56,7 +59,7 @@ class MllpHandler(BaseRequestHandler):
                 receiving_facility,
                 sending_application,
                 sending_facility,
-                "",
+                datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%z"),
                 "",
                 "ACK",
                 str(uuid.uuid4()),
@@ -69,6 +72,8 @@ class MllpHandler(BaseRequestHandler):
             log_segments("Sending", [response_msh, response_msa])
 
             self.send_message(f"{response_msh}\r{response_msa}\r")
+
+            print("---\n")
 
         print("Connection closed")
 
@@ -102,7 +107,6 @@ class MllpHandler(BaseRequestHandler):
         self.request.sendall(data)
 
 
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Missing port parameter!")
@@ -110,5 +114,6 @@ if __name__ == "__main__":
 
     port = int(sys.argv[1])
 
-    with TCPServer(("localhost", port), MllpHandler) as server:
+    print(f"Starting server on port: {port}")
+    with TCPServer(("0.0.0.0", port), MllpHandler) as server:
         server.serve_forever()
