@@ -31,6 +31,7 @@ import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 
 @Component
 public class MessageSender
@@ -55,7 +56,7 @@ public class MessageSender
     // TODO Set timeout from config
     private final long retryTimeout = 15000;
     
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor;
 
     private final PipeParser parser = new PipeParser();
 
@@ -87,6 +88,8 @@ public class MessageSender
         this.receivingFacOid = receivingFacOid;
 
         // TODO Queue all pending messages
+
+        executor = Context.taskWrapping(Executors.newSingleThreadExecutor());
     }
 
     public void queue(Long messageId)
@@ -94,9 +97,9 @@ public class MessageSender
         executor.submit(new MessageTask(messageId));
     }
 
-    private synchronized void send(Long messageId)
+    private synchronized void handleMessage(Long messageId)
     {
-        var span = tracer.spanBuilder("MessageSender.send").startSpan();
+        var span = tracer.spanBuilder("MessageSender.handleMessage").setNoParent().startSpan();
 
         try (var scope = span.makeCurrent())
         {
@@ -345,7 +348,7 @@ public class MessageSender
             var messageId = this.messageId;
             if (messageId != null)
             {
-                send(messageId);
+                handleMessage(messageId);
             }
         }
     }

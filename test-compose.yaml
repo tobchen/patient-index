@@ -5,9 +5,21 @@ services:
       - 127.0.0.1:4317:4317
       - 127.0.0.1:4318:4318
       - 127.0.0.1:16686:16686
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    ports:
+      - 127.0.0.1:9090:9090
+    volumes:
+      - ./prom/prometheus.yaml:/etc/prometheus/prometheus.yml
   postgres-patient-index:
     image: postgres:16.1-bullseye
     ports:
       - 127.0.0.1:5432:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+  postgres-patient-index-feed:
+    image: postgres:16.1-bullseye
+    ports:
+      - 127.0.0.1:5442:5432
     environment:
       - POSTGRES_PASSWORD=password
