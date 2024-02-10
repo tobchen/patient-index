@@ -123,16 +123,28 @@ public class PatientProvider implements IResourceProvider
                     throw new InvalidRequestException("Unequal one search parameters");
                 }
 
-                var identifierQuery = queries.get("identifier");
+                var identifierQuery = queries.get(Patient.SP_IDENTIFIER);
                 if (identifierQuery == null || identifierQuery.length != 1)
                 {
-                    throw new InvalidRequestException("Conditional update accepts only one identifier query");
+                    throw new InvalidRequestException(
+                        "Conditional update accepts only one identifier query");
                 }
 
                 var systemAndValue = identifierQuery[0].split("\\|");
+                if (systemAndValue.length != 2)
+                {
+                    throw new InvalidRequestException(
+                        "Identifier must be: system|value");
+                }
 
-                outcome = conditionalUpdate(systemAndValue.length > 0 ? systemAndValue[0] : null,
-                    systemAndValue.length > 1 ? systemAndValue[1] : null, patient);
+                var system = systemAndValue[0];
+                var value = systemAndValue[1];
+                if (system == null || system.length() == 0 || value == null || value.length() == 0)
+                {
+                    throw new InvalidRequestException("Cannot have empty system or value");
+                }
+
+                outcome = conditionalUpdate(system, value, patient);
             }
             else
             {
@@ -379,8 +391,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Transactional
-    private MethodOutcome conditionalUpdate(@Nullable String system, @Nullable String value,
-        Patient patient)
+    private MethodOutcome conditionalUpdate(String system, String value, Patient patient)
     {
         MethodOutcome outcome;
 

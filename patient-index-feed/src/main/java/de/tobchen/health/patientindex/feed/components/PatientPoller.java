@@ -269,7 +269,7 @@ public class PatientPoller
         var topUpdatedAt = repository.findTopByOrderByPatientUpdatedAtDesc().orElse(null);
         if (topUpdatedAt != null)
         {
-            var searchFrom = topUpdatedAt.getPatientUpdatedAt().truncatedTo(ChronoUnit.SECONDS);
+            var searchFrom = topUpdatedAt.getPatientUpdatedAt().minusSeconds(1);
 
             var whitelistStart = searchFrom.minusSeconds(1);
             var whitelist = new HashSet<PatientIdVid>();

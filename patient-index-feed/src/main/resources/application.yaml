@@ -3,8 +3,6 @@ logging:
     org:
       hibernate:
         SQL: debug
-        type.descriptor.sql.BasicBinder: trace
-      springframework.transaction.interceptor.TransactionInterceptor: trace
     de.tobchen: trace
 
 patient-index-feed:
