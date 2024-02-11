@@ -15,6 +15,7 @@ import org.springframework.ws.soap.server.endpoint.annotation.SoapAction;
 
 import de.tobchen.health.patientindex.ws.model.schemas.ActClassControlAct;
 import de.tobchen.health.patientindex.ws.model.schemas.CD;
+import de.tobchen.health.patientindex.ws.model.schemas.COCTMT090003UV01AssignedEntity;
 import de.tobchen.health.patientindex.ws.model.schemas.CS;
 import de.tobchen.health.patientindex.ws.model.schemas.II;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01Acknowledgement;
@@ -184,9 +185,13 @@ public class PixQueryEndpoint
             subject.setTypeCode(ParticipationTargetSubject.SBJ);
             subject.setPatient(patient);
 
+            var assignedEntity = new COCTMT090003UV01AssignedEntity();
+            assignedEntity.setClassCode("ASSIGNED");
+            assignedEntity.getId().add(Hl7v3Utilities.createNullIi());
+
             var custodian = new MFMIMT700711UV01Custodian();
             custodian.getTypeCode().add("CST");
-            // TODO Assigned entity
+            custodian.setAssignedEntity(assignedEntity);
 
             registrationEvent = new PRPAIN201310UV02MFMIMT700711UV01RegistrationEvent();
             registrationEvent.getClassCode().add("REG");

@@ -1,5 +1,6 @@
 package de.tobchen.health.patientindex.ws.util;
 
+import de.tobchen.health.patientindex.ws.model.schemas.II;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000100UV01Device;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000100UV01Receiver;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000100UV01Sender;
@@ -46,5 +47,14 @@ public abstract class Hl7v3Utilities
         target.setDeterminerCode(source.getDeterminerCode());
         
         return target;
+    }
+
+    public static II createNullIi()
+    {
+        var ii = new II();
+
+        ii.getNullFlavor().add("NA");
+
+        return ii;
     }
 }
