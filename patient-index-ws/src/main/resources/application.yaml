@@ -2,8 +2,6 @@ logging:
   level:
     de.tobchen: trace
 
-server.port: 9080
-
 patient-index-ws:
   fhir:
     server: http://localhost:8080/fhir/r5

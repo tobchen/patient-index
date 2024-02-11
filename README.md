@@ -26,7 +26,7 @@ The usual Spring Boot configuration applies (e.g. `server.port`).
 
 ### Patient Index Feed
 
-The *Patient Index* Feed component polls the *Patient Index* regularly for updated patient resources and generates HL7v2 ADT-A01 or -A40 messages depending on wether the updated resource has a `link` field or not. These messages are queued to be sent to the given HL7v2 receiver.
+The *Patient Index* Feed component polls the *Patient Index* regularly for updated patient resources and generates HL7v2 ADT-A01 or -A40 messages depending on whether the updated resource has a `link` field or not. These messages are queued to be sent to the given HL7v2 receiver.
 
 ![Patient Index Feed Polling](./patient-index-feed/polling.svg)
 
