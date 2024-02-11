@@ -16,6 +16,10 @@ The *Patient Index* system is made of of three components:
 
 The *Patient Index* is a very minimal FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
 
+![Patient Index Entity Relationship Model](./patient-index/erm.svg)
+
+Check out the conformance statement for available methods and operations.
+
 #### Configuration
 
 The usual Spring Boot configuration applies (e.g. `server.port`).
@@ -23,6 +27,10 @@ The usual Spring Boot configuration applies (e.g. `server.port`).
 ### Patient Index Feed
 
 The *Patient Index* Feed component polls the *Patient Index* regularly for updated patient resources and generates HL7v2 ADT-A01 or -A40 messages depending on wether the updated resource has a `link` field or not. These messages are queued to be sent to the given HL7v2 receiver.
+
+![Patient Index Feed Polling](./patient-index-feed/polling.svg)
+
+![Patient Index Feed Message Handling](./patient-index-feed/message-handling.svg)
 
 #### Configuration
 
@@ -45,6 +53,8 @@ The *Patient Index* Web Service queries the *Patient Index* on incoming requests
 
 While the *Patient Index* itself allows all kinds of identifier system URIs, this web service only recognizes systems of type OID (e.g. `urn:oid:0.0.0`). For FHIR Patient ids a system OID needs to be configured.
 
+![Patient Index Web Service Query Sequence](./patient-index-ws/sequence.svg)
+
 #### Configuration
 
 The usual Spring Boot configuration applies (e.g. `server.port`).
@@ -62,11 +72,11 @@ The *Patient Index* web service does not offer any WSDL itself. Please use the I
 
 #### Compilation
 
-To successfully compile the *Patient Index* web service put the HL7v3 *coreschemas* and *multicacheschemas* folders from the HL7v3 Normative Edition CD in */src/main/resources/schemas/hl7v3-ne2008/*
+To successfully compile the *Patient Index* web service place the *coreschemas* and *multicacheschemas* folders from the HL7v3 Normative Edition CD in */src/main/resources/schemas/hl7v3-ne2008/*
 
 ## Docker Compose
 
-To successfully run *compose.yaml* put the [OpenTelemetry javaagent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) in */otel/opentelemetry-javaagent.jar*
+To successfully run *compose.yaml* place the [OpenTelemetry javaagent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) in */otel/opentelemetry-javaagent.jar*
 
 ## Development
 

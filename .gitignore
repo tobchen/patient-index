@@ -1,2 +1,4 @@
 /otel/*.jar
 *.bkp
+*.dtmp
+

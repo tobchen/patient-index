@@ -11,19 +11,22 @@ services:
       - 127.0.0.1:9090:9090
     volumes:
       - ./prom/prometheus.yaml:/etc/prometheus/prometheus.yml
-  test-postgres-patient-index:
+    network_mode: bridge
+    extra_hosts:
+      - host.docker.internal:host-gateway
+  test-postgres-pix:
     image: postgres:16.1-bullseye
     ports:
       - 127.0.0.1:5432:5432
     environment:
       - POSTGRES_PASSWORD=password
-  test-postgres-patient-index-feed:
+  test-postgres-pix-feed:
     image: postgres:16.1-bullseye
     ports:
       - 127.0.0.1:5442:5432
     environment:
       - POSTGRES_PASSWORD=password
-  test-patient-index-feed-consumer:
+  test-pix-feed-consumer:
     build: ./patient-index-feed-consumer
     ports:
       - 127.0.0.1:6060:6060
