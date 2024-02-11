@@ -18,6 +18,7 @@ import de.tobchen.health.patientindex.ws.model.schemas.CD;
 import de.tobchen.health.patientindex.ws.model.schemas.CS;
 import de.tobchen.health.patientindex.ws.model.schemas.II;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01Acknowledgement;
+import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01Sender;
 import de.tobchen.health.patientindex.ws.model.schemas.MCCIMT000300UV01TargetMessage;
 import de.tobchen.health.patientindex.ws.model.schemas.MFMIMT700711UV01Custodian;
 import de.tobchen.health.patientindex.ws.model.schemas.MFMIMT700711UV01QueryAck;
@@ -34,6 +35,7 @@ import de.tobchen.health.patientindex.ws.model.schemas.ParticipationTargetSubjec
 import de.tobchen.health.patientindex.ws.model.schemas.TS;
 import de.tobchen.health.patientindex.ws.model.schemas.XActMoodIntentEvent;
 import de.tobchen.health.patientindex.ws.services.QueryService;
+import de.tobchen.health.patientindex.ws.util.Hl7v3Utilities;
 
 @Endpoint
 public class PixQueryEndpoint
@@ -68,9 +70,17 @@ public class PixQueryEndpoint
         var acceptAckCode = new CS();
         acceptAckCode.setCode("NE");
 
-        // TODO Sender
+        MCCIMT000300UV01Sender sender = null;
+        var requestReceiverList = request.getReceiver();
+        if (requestReceiverList.size() > 0)
+        {
+            sender = Hl7v3Utilities.convertReceiverToSender300(requestReceiverList.get(0));
 
-        // TODO Receiver
+            if (requestReceiverList.size() > 1)
+            {
+                logger.info("Request had more than one receiver; picked first one for sender");
+            }
+        }
 
         var acknowledgement = createAcknowledgement(request.getId());
 
@@ -84,6 +94,8 @@ public class PixQueryEndpoint
         response.setProcessingCode(request.getProcessingCode());
         response.setProcessingModeCode(processingModeCode);
         response.setAcceptAckCode(acceptAckCode);
+        response.getReceiver().add(Hl7v3Utilities.convertSenderToReceiver300(request.getSender()));
+        response.setSender(sender);
         response.getAcknowledgement().add(acknowledgement);
         response.setControlActProcess(controlActProcess);
 
