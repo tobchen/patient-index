@@ -6,5 +6,4 @@ java -javaagent:../otel/opentelemetry-javaagent.jar \
     -Dspring.datasource.url=jdbc:postgresql://localhost:5442/postgres \
     -Dspring.datasource.username=postgres -Dspring.datasource.password=password \
     -Dspring.jpa.hibernate.ddl-auto=update \
-    -Dserver.port=8080 \
     -jar target/patient-index-feed-0.0.1-SNAPSHOT.jar

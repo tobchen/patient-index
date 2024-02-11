@@ -3,8 +3,29 @@ services:
     image: jaegertracing/all-in-one:1.54.0
     ports:
       - 127.0.0.1:16686:16686
-      - 127.0.0.1:4317:4317
-      - 127.0.0.1:4318:4318
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    ports:
+      - 127.0.0.1:9090:9090
+    volumes:
+      - ./prom/prometheus.yaml:/etc/prometheus/prometheus.yml
+
+  postgres-patient-index:
+    image: postgres:16.1-bullseye
+    ports:
+      - 127.0.0.1:5432:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+  postgres-patient-index-feed:
+    image: postgres:16.1-bullseye
+    ports:
+      - 127.0.0.1:5442:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+  
+  patient-index-feed-consumer:
+    build: ./patient-index-feed-consumer
+
   patient-index:
     build: ./patient-index
     ports:
@@ -13,11 +34,50 @@ services:
       - JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar"
       - OTEL_SERVICE_NAME=patient-index
       - OTEL_TRACES_EXPORTER=otlp
-      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4317
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4317
       - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
       - OTEL_METRICS_EXPORTER=none
       - OTEL_LOGS_EXPORTER=none
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-patient-index:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
     volumes:
       - ./otel:/otel
-    network_mode: host
+  
+  patient-index-feed:
+    build: ./patient-index-feed
+    environment:
+      - JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar"
+      - OTEL_SERVICE_NAME=patient-index-feed
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4317
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+      - OTEL_METRICS_EXPORTER=prometheus
+      - OTEL_LOGS_EXPORTER=none
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-patient-index-feed:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - PATIENT_INDEX_FEED_FHIR_SERVER=http://patient-index:8080/fhir/r5
+      - PATIENT_INDEX_FEED_HL7V2_SERVER_HOST=patient-index-feed-consumer
+      - PATIENT_INDEX_FEED_HL7V2_SERVER_PORT=6060
+    volumes:
+      - ./otel:/otel
+  
+  patient-index-ws:
+    build: ./patient-index-ws
+    ports:
+      - 127.0.0.1:9080:8080
+    environment:
+      - JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar"
+      - OTEL_SERVICE_NAME=patient-index-ws
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4317
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
+      - PATIENT_INDEX_WS_FHIR_SERVER=http://patient-index:8080/fhir/r5
+    volumes:
+      - ./otel:/otel
 
