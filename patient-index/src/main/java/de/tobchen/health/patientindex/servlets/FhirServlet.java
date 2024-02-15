@@ -1,6 +1,6 @@
 package de.tobchen.health.patientindex.servlets;
 
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.server.RestfulServer;

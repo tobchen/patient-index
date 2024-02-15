@@ -2,8 +2,8 @@ package de.tobchen.health.patientindex.model.embeddables;
 
 import java.util.Objects;
 
-import javax.persistence.Column;
-import javax.persistence.Embeddable;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
 
 import org.springframework.lang.Nullable;
 
