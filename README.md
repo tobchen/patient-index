@@ -77,11 +77,3 @@ To successfully compile the *Patient Index* web service place the *coreschemas* 
 ## Docker Compose
 
 To successfully run *compose.yaml* place the [OpenTelemetry javaagent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) in */otel/opentelemetry-javaagent.jar*
-
-## Development
-
-### (F)AQ
-
-**Why Spring Boot 2.7?**
-
-As of 2023, HAPI FHIR is depending on `javax.servlet`, so until that's upgraded, this project's dependencies won't be either.
