@@ -11,6 +11,8 @@ public interface PatientRepository extends Repository<PatientEntity, Long>
 {
     public PatientEntity save(PatientEntity entity);
 
+    public PatientEntity saveAndFlush(PatientEntity entity);
+
     public Optional<PatientEntity> findByResourceId(String resourceId);
 
     public Iterable<PatientEntity> findByIdentifiers_SystemAndIdentifiers_Val(String system, String value);

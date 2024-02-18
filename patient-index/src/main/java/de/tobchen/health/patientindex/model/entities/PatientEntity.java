@@ -13,6 +13,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import org.springframework.lang.Nullable;
@@ -20,7 +22,7 @@ import org.springframework.lang.Nullable;
 import de.tobchen.health.patientindex.model.embeddables.IdentifierEmbeddable;
 
 @Entity
-@Table(indexes = {@Index(columnList = "resourceId")})
+@Table(indexes = {@Index(columnList = "resourceId"), @Index(columnList = "updatedAt")})
 public class PatientEntity
 {
     @Id
@@ -31,7 +33,10 @@ public class PatientEntity
     private String resourceId;
 
     @Column(nullable = false)
-    private long versionId;
+    private Long versionId;
+
+    @Column(nullable = false)
+    private Instant updatedAt;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(indexes = {@Index(columnList = "system"), @Index(columnList = "val")})
@@ -41,15 +46,25 @@ public class PatientEntity
     @ManyToOne(fetch = FetchType.LAZY)
     private PatientEntity mergedInto;
 
-    private Instant updatedAt;
-
     protected PatientEntity() { }
 
     public PatientEntity(String resourceId)
     {
         this.resourceId = resourceId;
-        this.versionId = 0;
+        this.versionId = Long.valueOf(0);
         this.updatedAt = Instant.now();
+    }
+
+    @PrePersist
+    @PreUpdate
+    public void prePersistOrUpdate()
+    {
+        this.updatedAt = Instant.now();
+    }
+
+    public void incrementVersion()
+    {
+        this.versionId = Long.valueOf(this.versionId.longValue() + 1);
     }
 
     public Long getId() {
@@ -72,23 +87,11 @@ public class PatientEntity
         this.mergedInto = mergedInto;
     }
 
-    public void setUpdatedAt() {
-        setUpdatedAt(Instant.now());
-    }
-
-    public void setUpdatedAt(Instant updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public long getVersionId() {
+    public Long getVersionId() {
         return versionId;
-    }
-
-    public void setVersionId(long versionId) {
-        this.versionId = versionId;
     }
 }

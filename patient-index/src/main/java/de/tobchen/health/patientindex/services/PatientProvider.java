@@ -116,8 +116,18 @@ public class PatientProvider implements IResourceProvider
             else if (conditional != null)
             {
                 var parts = UrlUtil.parseUrl(conditional);
+                if (parts == null)
+                {
+                    throw new InvalidRequestException("Cannot parse conditional");
+                }
 
-                var queries = UrlUtil.parseQueryString(parts.getParams());
+                var params = parts.getParams();
+                if (params == null)
+                {
+                    throw new InvalidRequestException("Cannot get parts from conditional");
+                }
+
+                var queries = UrlUtil.parseQueryString(params);
                 if (queries.size() != 1)
                 {
                     throw new InvalidRequestException("Unequal one search parameters");
@@ -127,7 +137,7 @@ public class PatientProvider implements IResourceProvider
                 if (identifierQuery == null || identifierQuery.length != 1)
                 {
                     throw new InvalidRequestException(
-                        "Conditional update accepts only one identifier query");
+                        "Conditional update requires exactly one identifier parameter");
                 }
 
                 var systemAndValue = identifierQuery[0].split("\\|");
@@ -518,7 +528,8 @@ public class PatientProvider implements IResourceProvider
             }
         }
 
-        entity = save(entity);
+        entity.incrementVersion();
+        entity = repository.saveAndFlush(entity);
 
         var outcome = new MethodOutcome(
             new IdType("Patient", entity.getResourceId()), Boolean.FALSE);
@@ -617,15 +628,9 @@ public class PatientProvider implements IResourceProvider
 
         sourceEntity.setMergedInto(targetEntity);
 
-        save(sourceEntity);
+        sourceEntity.incrementVersion();
+        repository.save(sourceEntity);
 
         return resourceFromEntity(targetEntity);
-    }
-
-    private PatientEntity save(PatientEntity entity)
-    {
-        entity.setVersionId(entity.getVersionId() + 1);
-        entity.setUpdatedAt();
-        return repository.save(entity);
     }
 }
