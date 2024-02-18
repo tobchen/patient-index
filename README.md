@@ -14,11 +14,13 @@ The *Patient Index* system is made of of three components:
 
 ### Patient Index (Main Component)
 
-The *Patient Index* is limited FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
+The *Patient Index* is a limited FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
 
 ![Patient Index Entity Relationship Model](./patient-index/erm.svg)
 
 Check out the conformance statement for available methods and operations.
+
+![Patient Index Entity Creation or Update](./patient-index/create-or-update.svg)
 
 #### Configuration
 
