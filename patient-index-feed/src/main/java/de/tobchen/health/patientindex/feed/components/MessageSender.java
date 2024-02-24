@@ -87,9 +87,12 @@ public class MessageSender
         this.receivingAppOid = receivingAppOid;
         this.receivingFacOid = receivingFacOid;
 
-        // TODO Queue all pending messages
-
         executor = Context.taskWrapping(Executors.newSingleThreadExecutor());
+
+        for (var msgId : repository.findByStatusOrderByPatientUpdatedAtAsc(MessageStatus.QUEUED))
+        {
+            queue(msgId.getId());
+        }
     }
 
     public void queue(Long messageId)
