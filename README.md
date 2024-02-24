@@ -6,21 +6,21 @@ Very, very, *very* limited patient indexing.
 
 The *Patient Index* system is made of of three components:
 
-* *Patient Index,* the actual index
+* *Patient Index* Main, the actual index
 * *Patient Index* Feed, an optional poller enabling IHE Patient Identity Feed (ITI-8) conformant messaging of new (or updated) or merged patient resources
 * *Patient Index* Web Service, an optional web service enabling IHE PIXV3 Query (ITI-45) querying of patient resources
 
 ![Patient Index Architecture](./architecture.svg)
 
-### Patient Index (Main Component)
+### Patient Index Main
 
-The *Patient Index* is a limited FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
+The *Patient Index* Main component is a limited FHIR server. It only stores FHIR R5 Patient resources with their identifiers. Sending demographic data has no effect.
 
-![Patient Index Entity Relationship Model](./patient-index/erm.svg)
+![Patient Index Entity Relationship Model](./patient-index-main/erm.svg)
 
 Check out the conformance statement for available methods and operations.
 
-![Patient Index Entity Creation or Update](./patient-index/create-or-update.svg)
+![Patient Index Entity Creation or Update](./patient-index-main/create-or-update.svg)
 
 #### Configuration
 
