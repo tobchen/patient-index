@@ -67,6 +67,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
+    @Transactional
     public MethodOutcome create(@ResourceParam Patient patient)
     {
         var span = tracer.spanBuilder("PatientProvider.create").startSpan();
@@ -92,6 +93,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Update
+    @Transactional
     public MethodOutcome update(@Nullable @IdParam IIdType idType,
         @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
     {
@@ -321,6 +323,7 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Operation(name = "$merge", idempotent = false)
+    @Transactional
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
     {
@@ -400,7 +403,6 @@ public class PatientProvider implements IResourceProvider
         }
     }
 
-    @Transactional
     private MethodOutcome conditionalUpdate(String system, String value, Patient patient)
     {
         MethodOutcome outcome;
@@ -460,7 +462,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @Transactional
     private MethodOutcome updateOrUpdateAsCreate(String resourceId, Patient patient)
     {
         MethodOutcome outcome;
@@ -478,7 +479,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @Transactional
     private MethodOutcome createAndSaveEntity(Patient patient)
     {
         String resourceId;
@@ -495,7 +495,6 @@ public class PatientProvider implements IResourceProvider
         return createAndSaveEntity(resourceId, patient);
     }
 
-    @Transactional
     private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
     {
         var entity = new PatientEntity(resourceId);
@@ -538,7 +537,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    @Transactional(readOnly = true)
     private @Nullable Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
     {
         Iterable<PatientEntity> result;
@@ -599,7 +597,6 @@ public class PatientProvider implements IResourceProvider
         return resource;
     }
 
-    @Transactional
     private Patient merge(String sourceId, String targetId)
     {
         PatientEntity sourceEntity = repository.findByResourceId(sourceId).orElse(null);
