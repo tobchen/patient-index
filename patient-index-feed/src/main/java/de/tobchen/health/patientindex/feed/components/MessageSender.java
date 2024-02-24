@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.HapiContext;
@@ -26,6 +25,7 @@ import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
 import ca.uhn.hl7v2.parser.PipeParser;
+import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
 import de.tobchen.health.patientindex.feed.model.enums.MessageStatus;
 import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
 import io.opentelemetry.api.OpenTelemetry;
@@ -105,10 +105,11 @@ public class MessageSender
         {
             logger.debug("Trying to send message {}", messageId);
 
-            var rawMessage = getRawMessage(messageId);
-            if (rawMessage != null && rawMessage.status() == MessageStatus.QUEUED)
+            var entity = repository.findById(messageId).orElse(null);
+
+            if (entity != null && entity.getStatus() == MessageStatus.QUEUED)
             {
-                var hl7v2Message = createHl7Message(rawMessage);
+                var hl7v2Message = createHl7Message(entity);
                 if (hl7v2Message != null)
                 {
                     try
@@ -146,7 +147,8 @@ public class MessageSender
                         }
                     }
 
-                    setMessageStatus(messageId, MessageStatus.SENT);
+                    entity.setStatus(MessageStatus.SENT);
+                    repository.save(entity);
 
                     span.setAttribute("mllp.attempts", attemptCount);
                     try
@@ -160,7 +162,9 @@ public class MessageSender
                 }
                 else
                 {
-                    setMessageStatus(messageId, MessageStatus.FAILED);
+                    entity.setStatus(MessageStatus.FAILED);
+                    repository.save(entity);
+
                     span.setStatus(StatusCode.ERROR, "Failed to create HL7v2 message");
                 }
             }
@@ -175,42 +179,33 @@ public class MessageSender
         }
     }
 
-    @Transactional(readOnly = true)
-    private @Nullable RawMessage getRawMessage(Long id)
-    {
-        var entity = repository.findById(id).orElse(null);
-
-        return entity != null ? new RawMessage(entity.getId(), entity.getPatientId(), entity.getPatientUpdatedAt(),
-            entity.getLinkedPatientId(), entity.getRecordedAt(), entity.getStatus()) : null;
-    }
-
-    private @Nullable Message createHl7Message(RawMessage rawMessage)
+    private @Nullable Message createHl7Message(MessageEntity msgEntity)
     {
         Message result;
 
         try
         {
-            var linkedPatientId = rawMessage.linkedPatientId;
+            var linkedPatientId = msgEntity.getLinkedPatientId();
             if (linkedPatientId == null)
             {
-                var message = new ADT_A01();                
-                setSegment(message.getMSH(), "A01", rawMessage.id());
-                setSegment(message.getEVN(), rawMessage.recordedAt(), rawMessage.patientUpdatedAt());
-                setSegment(message.getPID(), rawMessage.patientId());
-                message.getPV1().getPatientClass().setValue("N");
+                var hl7Msg = new ADT_A01();                
+                setSegment(hl7Msg.getMSH(), "A01", msgEntity.getId());
+                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientUpdatedAt());
+                setSegment(hl7Msg.getPID(), msgEntity.getPatientId());
+                hl7Msg.getPV1().getPatientClass().setValue("N");
 
-                result = message;
+                result = hl7Msg;
             }
             else
             {
-                var message = new ADT_A39();
-                setSegment(message.getMSH(), "A40", rawMessage.id());
-                setSegment(message.getEVN(), rawMessage.recordedAt(), rawMessage.patientUpdatedAt());
-                var patientGroup = message.getPIDPD1MRGPV1();
-                setSegment(patientGroup.getPID(), rawMessage.linkedPatientId());
-                setPidCx(patientGroup.getMRG().getPriorPatientIdentifierList(0), rawMessage.patientId());
+                var hl7Msg = new ADT_A39();
+                setSegment(hl7Msg.getMSH(), "A40", msgEntity.getId());
+                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientUpdatedAt());
+                var patientGroup = hl7Msg.getPIDPD1MRGPV1();
+                setSegment(patientGroup.getPID(), linkedPatientId);
+                setPidCx(patientGroup.getMRG().getPriorPatientIdentifierList(0), msgEntity.getPatientId());
 
-                result = message;
+                result = hl7Msg;
             }
         }
         catch (HL7Exception e)
@@ -322,20 +317,9 @@ public class MessageSender
         return response;
     }
 
-    @Transactional
-    private void setMessageStatus(Long id, MessageStatus status)
-    {
-        var entity = repository.findById(id).orElse(null);
-        if (entity != null)
-        {
-            entity.setStatus(status);
-            repository.save(entity);
-        }
-    }
-
     private class MessageTask implements Runnable
     {
-        private Long messageId;
+        private final Long messageId;
 
         public MessageTask(Long messageId)
         {
@@ -352,7 +336,4 @@ public class MessageSender
             }
         }
     }
-
-    private record RawMessage(Long id, String patientId, Instant patientUpdatedAt,
-        @Nullable String linkedPatientId, Instant recordedAt, MessageStatus status) { }
 }

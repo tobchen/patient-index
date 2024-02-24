@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.hl7.fhir.r5.model.Bundle;
@@ -15,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
@@ -77,18 +74,138 @@ public class PatientPoller
 
         try (var scope = span.makeCurrent())
         {
-            var setup = getPollingSetup();
+            Instant searchFrom = checkFallback;
+            var whitelist = new HashSet<PatientIdVid>();
 
-            var patientResults = getPatientResults(setup);
-
-            var messageIds = createMessages(patientResults);
-
-            for (var messageId : messageIds)
+            var topUpdatedAt = repository.findTopByOrderByPatientUpdatedAtDesc().orElse(null);
+            if (topUpdatedAt != null)
             {
-                if (messageId != null)
+                searchFrom = topUpdatedAt.getPatientUpdatedAt().minusSeconds(1);
+
+                var whitelistStart = searchFrom.minusSeconds(1);
+                
+                for (var patientIdAndVersionId : repository.findByPatientUpdatedAtGreaterThanEqual(whitelistStart))
                 {
-                    sender.queue(messageId);
+                    whitelist.add(new PatientIdVid(patientIdAndVersionId.getPatientId(),
+                        patientIdAndVersionId.getPatientVersionId()));
                 }
+            }
+
+            var newMessages = new ArrayList<MessageEntity>();
+
+            try
+            {
+                var query = client.search()
+                    .forResource(Patient.class)
+                    .where(new DateClientParam(Constants.PARAM_LASTUPDATED)
+                        .after()
+                        .millis(Date.from(searchFrom)))
+                    .returnBundle(Bundle.class);
+                
+                propagator.inject(Context.current(), query, otelSetter);
+                
+                var bundle = query.execute();
+                
+                var entries = bundle.getEntry();
+                if (entries != null)
+                {
+                    for (var entry : entries)
+                    {
+                        var resource = entry.getResource();
+                        if (!(resource instanceof Patient))
+                        {
+                            logger.info("Ignoring non Patient resource");
+                            continue;
+                        }
+
+                        var patient = (Patient) resource;
+                        var id = patient.getIdPart();
+                        if (id == null)
+                        {
+                            logger.info("Ignoring patient without id");
+                            continue;
+                        }
+
+                        var meta = patient.getMeta();
+                        if (meta == null)
+                        {
+                            logger.info("Ignoring patient {} without meta", id);
+                            continue;
+                        }
+
+                        var versionId = meta.getVersionId();
+                        if (versionId == null)
+                        {
+                            logger.info("Ignoring patient {} without version", id);
+                            continue;
+                        }
+
+                        var idVid = new PatientIdVid(id, versionId);
+                        if (whitelist.contains(idVid))
+                        {
+                            logger.info("Ignoring whitelisted patient {}", id);
+                            continue;
+                        }
+
+                        var lastUpdated = meta.getLastUpdated();
+                        if (lastUpdated == null)
+                        {
+                            logger.info("Ignoring patient {} without lastUpdated", id);
+                            continue;
+                        }
+
+                        String linkedId = null;
+
+                        var linkList = patient.getLink();
+                        if (linkList != null && linkList.size() > 0)
+                        {
+                            for (var link : linkList)
+                            {
+                                var reference = link.getOther();
+                                if (reference == null)
+                                {
+                                    logger.info("Ignoring null link reference for patient {}", id);
+                                    continue;
+                                }
+
+                                var referenceIdType = reference.getReferenceElement();
+                                if (!"Patient".equals(referenceIdType.getResourceType()))
+                                {
+                                    logger.info("Ignoring non patient link for patient {}", id);
+                                    continue;
+                                }
+
+                                linkedId = referenceIdType.getIdPart();
+                                if (linkedId == null)
+                                {
+                                    logger.info("Ignoring non patient id link for patient {}", id);
+                                }
+
+                                break;
+                            }
+
+                            if (linkedId == null)
+                            {
+                                logger.info("Ignoring patient {} with bad link", id);
+                                continue;
+                            }
+                        }
+
+                        newMessages.add(new MessageEntity(
+                            idVid.id(), idVid.versionId(), lastUpdated.toInstant(), linkedId));
+                    }
+                }
+            }
+            catch (FhirClientConnectionException e)
+            {
+                logger.warn("Cannot connect to FHIR server");
+            }
+
+            newMessages.sort((a, b) -> a.getPatientUpdatedAt().compareTo(b.getPatientUpdatedAt()));
+
+            for (var entity : repository.saveAll(newMessages))
+            {
+                sender.queue(entity.getId());
             }
         }
         finally
@@ -97,200 +214,5 @@ public class PatientPoller
         }
     }
 
-    private List<PatientResult> getPatientResults(PollingSetup setup)
-    {
-        var patientResults = new ArrayList<PatientResult>();
-
-        try
-        {
-            var query = client.search()
-                .forResource(Patient.class)
-                .where(new DateClientParam(Constants.PARAM_LASTUPDATED)
-                    .after()
-                    .millis(Date.from(setup.searchFrom())))
-                .returnBundle(Bundle.class);
-            
-            propagator.inject(Context.current(), query, otelSetter);
-            
-            var bundle = query.execute();
-            
-            var entries = bundle.getEntry();
-            if (entries != null)
-            {
-                for (var entry : entries)
-                {
-                    var resource = entry.getResource();
-                    if (resource instanceof Patient)
-                    {
-                        var patient = (Patient) resource;
-
-                        var id = patient.getIdPart();
-                        if (id != null)
-                        {
-                            var meta = patient.getMeta();
-                            if (meta != null)
-                            {
-                                var versionId = meta.getVersionId();
-                                if (versionId != null)
-                                {
-                                    var idVid = new PatientIdVid(id, versionId);
-                                    if (setup.whitelist() == null || !setup.whitelist().contains(idVid))
-                                    {
-                                        var lastUpdated = meta.getLastUpdated();
-                                        if (lastUpdated != null)
-                                        {
-                                            try
-                                            {
-                                                var linkedId = getLinkedPatientId(patient);
-
-                                                patientResults.add(new PatientResult(idVid,
-                                                    lastUpdated.toInstant(), linkedId));
-                                            }
-                                            catch (IllegalArgumentException e)
-                                            {
-                                                logger.info("Ignoring patient {} with bad link", id);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            logger.info("Ignoring patient {} without lastUpdated", id);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        logger.info("Ignoring whitelisted patient {}", id);
-                                    }
-                                }
-                                else
-                                {
-                                    logger.info("Ignoring patient {} without version", id);
-                                }
-                            }
-                            else
-                            {
-                                logger.info("Ignoring patient {} without meta", id);
-                            }
-                        }
-                        else
-                        {
-                            logger.info("Ignoring patient without id");
-                        }
-                    }
-                }
-            }
-
-            patientResults.sort((a, b) -> { return a.updatedAt().compareTo(b.updatedAt()); });
-        }
-        catch (FhirClientConnectionException e)
-        {
-            logger.warn("Cannot connect to FHIR server");
-        }
-
-        return patientResults;
-    }
-
-    @Transactional
-    private List<Long> createMessages(List<PatientResult> patientResults)
-    {
-        var entities = new ArrayList<MessageEntity>();
-
-        for (var result : patientResults)
-        {
-            entities.add(new MessageEntity(result.idVid().id(), result.idVid().versionId(),
-                result.updatedAt(), result.linkedPatientId()));
-        }
-
-        var savedEntities = repository.saveAll(entities);
-
-        var ids = new ArrayList<Long>();
-        for (var entity : savedEntities)
-        {
-            ids.add(entity.getId());
-        }
-
-        return ids;
-    }
-
-    private static @Nullable String getLinkedPatientId(Patient patient) throws IllegalArgumentException
-    {
-        String linkedPatientId;
-
-        var linkList = patient.getLink();
-        if (linkList != null && linkList.size() > 0)
-        {
-            var link = linkList.get(0);
-            if (link != null)
-            {
-                var reference = link.getOther();
-                if (reference != null)
-                {
-                    var referenceIdType = reference.getReferenceElement();
-                    if (!referenceIdType.hasBaseUrl() && "Patient".equals(referenceIdType.getResourceType()))
-                    {
-                        var referenceId = referenceIdType.getIdPart();
-                        if (referenceId != null)
-                        {
-                            linkedPatientId = referenceId;
-                        }
-                        else
-                        {
-                            throw new IllegalArgumentException("Missing reference id value");
-                        }
-                    }
-                    else
-                    {
-                        throw new IllegalArgumentException("Bad reference id type");
-                    }
-                }
-                else
-                {
-                    throw new IllegalArgumentException("Null reference found");
-                }
-            }
-            else
-            {
-                throw new IllegalArgumentException("Null link found");
-            }
-        }
-        else
-        {
-            linkedPatientId = null;
-        }
-
-        return linkedPatientId;
-    }
-
-    @Transactional(readOnly = true)
-    private PollingSetup getPollingSetup()
-    {
-        PollingSetup result;
-
-        var topUpdatedAt = repository.findTopByOrderByPatientUpdatedAtDesc().orElse(null);
-        if (topUpdatedAt != null)
-        {
-            var searchFrom = topUpdatedAt.getPatientUpdatedAt().minusSeconds(1);
-
-            var whitelistStart = searchFrom.minusSeconds(1);
-            var whitelist = new HashSet<PatientIdVid>();
-            for (var patientIdAndVersionId : repository.findByPatientUpdatedAtGreaterThanEqual(whitelistStart))
-            {
-                whitelist.add(new PatientIdVid(patientIdAndVersionId.getPatientId(),
-                    patientIdAndVersionId.getPatientVersionId()));
-            }
-
-            result = new PollingSetup(searchFrom, whitelist);
-        }
-        else
-        {
-            result = new PollingSetup(checkFallback, null);
-        }
-
-        return result;
-    }
-
-    private record PollingSetup(Instant searchFrom, @Nullable Set<PatientIdVid> whitelist) { };
-
     private record PatientIdVid(String id, @Nullable String versionId) { };
-
-    private record PatientResult(PatientIdVid idVid, Instant updatedAt, @Nullable String linkedPatientId) { }
 }
