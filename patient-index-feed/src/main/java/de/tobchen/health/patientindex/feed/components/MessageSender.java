@@ -64,13 +64,13 @@ public class MessageSender
     private Connection connection;
 
     public MessageSender(OpenTelemetry openTelemetry, HapiContext context, MessageRepository repository,
-        @Value("${patient-index-feed.hl7v2.server.host}") String serverHost,
-        @Value("${patient-index-feed.hl7v2.server.port}") int serverPort,
-        @Value("${patient-index-feed.hl7v2.pid.oid}") String pidOid,
-        @Value("${patient-index-feed.hl7v2.sender.application.oid}") String sendingAppOid,
-        @Value("${patient-index-feed.hl7v2.sender.facility.oid}") String sendingFacOid,
-        @Value("${patient-index-feed.hl7v2.receiver.application.oid}") String receivingAppOid,
-        @Value("${patient-index-feed.hl7v2.receiver.facility.oid}") String receivingFacOid)
+        @Value("${patient-index.feed.receiver.host}") String serverHost,
+        @Value("${patient-index.feed.receiver.port}") int serverPort,
+        @Value("${patient-index.pid-oid}") String pidOid,
+        @Value("${patient-index.feed.sender.application-oid}") String sendingAppOid,
+        @Value("${patient-index.feed.sender.facility-oid}") String sendingFacOid,
+        @Value("${patient-index.feed.receiver.application-oid}") String receivingAppOid,
+        @Value("${patient-index.feed.receiver.facility-oid}") String receivingFacOid)
     {
         this.tracer = openTelemetry.getTracer(MessageSender.class.getName());
 

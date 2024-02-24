@@ -40,14 +40,14 @@ The following properties are required and have no defaults:
 
 |Property|Description|Example|
 |---|---|---|
-|`patient-index-feed.fhir.server`|The FHIR base url to poll for patient resources|`http://localhost:8080/fhir/r5`|
-|`patient-index-feed.hl7v2.pid.oid`|The OID to be set in `PID-3` or `MRG-1`|`0.0.0`|
-|`patient-index-feed.hl7v2.sender.application.oid`|The OID to be set in `MSH-3`|`1.2.3`|
-|`patient-index-feed.hl7v2.sender.facility.oid`|The OID to be set in `MSH-4`|`4.5.6`|
-|`patient-index-feed.hl7v2.receiver.application.oid`|The OID to be set in `MSH-5`|`7.8.9`|
-|`patient-index-feed.hl7v2.receiver.facility.oid`|The OID to be set in `MSH-6`|`10.11.11`|
-|`patient-index-feed.hl7v2.server.host`|The message receiver hostname|`localhost`|
-|`patient-index-feed.hl7v2.server.port`|The message receiver port|`6060`|
+|`patient-index.fhir.server`|The FHIR base url to poll for patient resources|`http://localhost:8080/fhir/r5`|
+|`patient-index.pid-oid`|The OID to be set in `PID-3` or `MRG-1`|`0.0.0`|
+|`patient-index.feed.sender.application-oid`|The OID to be set in `MSH-3`|`1.2.3`|
+|`patient-index.feed.sender.facility-oid`|The OID to be set in `MSH-4`|`4.5.6`|
+|`patient-index.feed.receiver.application-oid`|The OID to be set in `MSH-5`|`7.8.9`|
+|`patient-index.feed.receiver.facility-oid`|The OID to be set in `MSH-6`|`10.11.12`|
+|`patient-index.feed.receiver.host`|The message receiver hostname|`localhost`|
+|`patient-index.feed.receiver.port`|The message receiver port|`6060`|
 
 ### Patient Index Web Service
 
@@ -65,8 +65,8 @@ Additionally, the following properties are required and have no defaults:
 
 |Property|Description|Example|
 |---|---|---|
-|`patient-index-ws.fhir.server`|The FHIR base url to query patient resources|`http://localhost:8080/fhir/r5`|
-|`patient-index-ws.hl7v3.pid.oid`|The OID to be considered the patient resource id's OID|`0.0.0`|
+|`patient-index.fhir.server`|The FHIR base url to query patient resources|`http://localhost:8080/fhir/r5`|
+|`patient-index.pid-oid`|The OID to be considered the patient resource id's OID|`0.0.0`|
 
 #### WSDL
 

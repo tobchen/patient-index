@@ -30,7 +30,7 @@ public class QueryService
     private final String pidOid;
 
     public QueryService(OpenTelemetry openTelemetry, IGenericClient client,
-        @Value("${patient-index-ws.hl7v3.pid.oid}") String pidOid)
+        @Value("${patient-index.pid-oid}") String pidOid)
     {
         this.tracer = openTelemetry.getTracer(QueryService.class.getName());
         this.propagator = openTelemetry.getPropagators().getTextMapPropagator();

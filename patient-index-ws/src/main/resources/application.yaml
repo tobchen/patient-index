@@ -2,9 +2,7 @@ logging:
   level:
     de.tobchen: trace
 
-patient-index-ws:
+patient-index:
   fhir:
     server: http://localhost:8080/fhir/r5
-  hl7v3:
-    pid:
-      oid: 0.0.0
+  pid-oid: 0.0.0
