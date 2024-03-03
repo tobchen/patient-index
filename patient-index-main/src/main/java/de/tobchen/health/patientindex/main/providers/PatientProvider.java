@@ -1,5 +1,7 @@
 package de.tobchen.health.patientindex.main.providers;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -17,11 +19,18 @@ import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r5.model.Patient.LinkType;
+import org.jooq.Condition;
+import org.jooq.DSLContext;
+import org.jooq.JSONB;
+import org.jooq.impl.DSL;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import ca.uhn.fhir.rest.annotation.ConditionalUrlParam;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.IdParam;
 import ca.uhn.fhir.rest.annotation.Operation;
@@ -34,16 +43,12 @@ import ca.uhn.fhir.rest.annotation.Update;
 import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.DateParam;
+import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
-import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
-import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
-import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
-import ca.uhn.fhir.util.UrlUtil;
-import de.tobchen.health.patientindex.main.model.embeddables.IdentifierEmbeddable;
-import de.tobchen.health.patientindex.main.model.entities.PatientEntity;
-import de.tobchen.health.patientindex.main.model.repositories.PatientRepository;
+import de.tobchen.health.patientindex.main.jooq.public_.Tables;
+import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientsRecord;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Tracer;
@@ -52,12 +57,15 @@ import io.opentelemetry.api.trace.Tracer;
 public class PatientProvider implements IResourceProvider
 {
     private final Tracer tracer;
-    private final PatientRepository repository;
 
-    public PatientProvider(OpenTelemetry openTelemetry, PatientRepository repository)
+    private final DSLContext dsl;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public PatientProvider(OpenTelemetry openTelemetry, DSLContext dsl)
     {
         this.tracer = openTelemetry.getTracer(PatientProvider.class.getName());
-        this.repository = repository;
+        this.dsl = dsl;
     }
 
     @Override
@@ -67,17 +75,16 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Create
-    @Transactional
-    public MethodOutcome create(@ResourceParam Patient patient)
+    public MethodOutcome create(@ResourceParam Patient patient) throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.create").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            var outcome = createAndSaveEntity(patient);
+            var outcome = insertOrUpdatePatient(null, patient);
 
             span.setAttribute("audit.action", "create");
-            span.setAttribute("audit.patient", ((Patient) outcome.getResource()).getIdPart());
+            span.setAttribute("audit.patient", outcome.getId().getIdPart());
 
             return outcome;
         }
@@ -93,78 +100,23 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Update
-    @Transactional
-    public MethodOutcome update(@Nullable @IdParam IIdType idType,
-        @Nullable @ConditionalUrlParam String conditional, @ResourceParam Patient patient)
+    public MethodOutcome update(@Nullable @IdParam IIdType idType, @ResourceParam Patient patient)
+        throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.update").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            MethodOutcome outcome;
-
-            if (idType != null)
+            var idPart = idType.getIdPart();
+            if (idPart == null)
             {
-                var idPart = idType.getIdPart();
-                if (idPart != null)
-                {
-                    outcome = updateOrUpdateAsCreate(idPart, patient);
-                }
-                else
-                {
-                    throw new InvalidRequestException("Id is missing id part");
-                }
+                throw new InvalidRequestException("Id is missing id part");
             }
-            else if (conditional != null)
-            {
-                var parts = UrlUtil.parseUrl(conditional);
-                if (parts == null)
-                {
-                    throw new InvalidRequestException("Cannot parse conditional");
-                }
 
-                var params = parts.getParams();
-                if (params == null)
-                {
-                    throw new InvalidRequestException("Cannot get parts from conditional");
-                }
-
-                var queries = UrlUtil.parseQueryString(params);
-                if (queries.size() != 1)
-                {
-                    throw new InvalidRequestException("Unequal one search parameters");
-                }
-
-                var identifierQuery = queries.get(Patient.SP_IDENTIFIER);
-                if (identifierQuery == null || identifierQuery.length != 1)
-                {
-                    throw new InvalidRequestException(
-                        "Conditional update requires exactly one identifier parameter");
-                }
-
-                var systemAndValue = identifierQuery[0].split("\\|");
-                if (systemAndValue.length != 2)
-                {
-                    throw new InvalidRequestException(
-                        "Identifier must be: system|value");
-                }
-
-                var system = systemAndValue[0];
-                var value = systemAndValue[1];
-                if (system == null || system.length() == 0 || value == null || value.length() == 0)
-                {
-                    throw new InvalidRequestException("Cannot have empty system or value");
-                }
-
-                outcome = conditionalUpdate(system, value, patient);
-            }
-            else
-            {
-                throw new InvalidRequestException("Both id and conditional are null");
-            }
+            var outcome = insertOrUpdatePatient(idPart, patient);
 
             span.setAttribute("audit.action", outcome.getCreated().booleanValue() ? "create" : "update");
-            span.setAttribute("audit.patient", ((Patient) outcome.getResource()).getIdPart());
+            span.setAttribute("audit.patient", outcome.getId().getIdPart());
 
             return outcome;
         }
@@ -180,29 +132,28 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Read
-    @Transactional(readOnly = true)
-    public @Nullable Patient read(@IdParam IIdType resourceId)
+    public @Nullable Patient read(@IdParam IIdType resourceId) throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.read").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            Patient resource = null;
+            Patient resource;
 
-            var idPart = resourceId.getIdPart();
-            if (idPart != null)
+            var record = dsl.select(Tables.PATIENTS)
+                .from(Tables.PATIENTS)
+                .where(Tables.PATIENTS.ID.equal(resourceId.getIdPart()))
+                .fetchAny();
+            if (record != null)
             {
-                var entity = repository.findByResourceId(idPart).orElse(null);
-                if (entity != null)
-                {
-                    resource = resourceFromEntity(entity);
-                }
-            }
+                resource = resourceFromRecord(record.value1());
 
-            if (resource != null)
-            {
                 span.setAttribute("audit.action", "read");
                 span.setAttribute("audit.patient", resource.getIdPart());
+            }
+            else
+            {
+                resource = null;
             }
 
             return resource;
@@ -219,36 +170,33 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Search
-    @Transactional(readOnly = true)
     public List<Patient> searchByIdentifier(
         @RequiredParam(name = Patient.SP_IDENTIFIER) TokenParam resourceIdentifier)
+        throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.searchByIdentifier").startSpan();
 
         try (var scope = span.makeCurrent())
         {
             var result = new ArrayList<Patient>();
+            var patientIds = new ArrayList<String>();
 
-            var entities = findBySystemAndValue(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
-            if (entities != null)
-            {
-                for (var entity : entities)
-                {
-                    if (entity != null)
-                    {
-                        result.add(resourceFromEntity(entity));
-                    }
-                }
-            }
+            var identifier = new IdentifierRecord(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
+            var identifierJson = objectMapper.writeValueAsString(new IdentifierRecord[] { identifier });
 
-            var patientValues = new ArrayList<String>();
-            for (var resource : result)
+            var records = dsl.select(Tables.PATIENTS)
+                .from(Tables.PATIENTS)
+                .where(Tables.PATIENTS.IDENTIFIERS.contains(JSONB.jsonb(identifierJson)))
+                .fetch();
+            for (var record : records)
             {
-                patientValues.add(resource.getIdPart());
+                var resource = resourceFromRecord(record.value1());
+                result.add(resource);
+                patientIds.add(resource.getIdPart());
             }
 
             span.setAttribute("audit.action", "search");
-            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientValues);
+            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientIds);
 
             return result;
         }
@@ -264,50 +212,31 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Search
-    @Transactional(readOnly = true)
     public List<Patient> searchByLastUpdated(
-        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateParam datePatam)
+        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
+        throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.searchByLastUpdated").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            var instant = datePatam.getValue().toInstant();
-            if (instant == null)
-            {
-                throw new InternalErrorException("Cannot get instant from date param");
-            }
-
-            Iterable<PatientEntity> entities;
-            switch (datePatam.getPrefix())
-            {
-            case GREATERTHAN:
-                entities = repository.findByUpdatedAtGreaterThan(instant);
-                break;
-            case GREATERTHAN_OR_EQUALS:
-                entities = repository.findByUpdatedAtGreaterThanEqual(instant);
-                break;
-            default:
-                throw new InvalidRequestException("Unsupported date param prefix");
-            }
-
             var result = new ArrayList<Patient>();
-            for (var entity : entities)
-            {
-                if (entity != null)
-                {
-                    result.add(resourceFromEntity(entity));
-                }
-            }
+            var patientIds = new ArrayList<String>();
 
-            var patientValues = new ArrayList<String>();
-            for (var resource : result)
+            var records = dsl.select(Tables.PATIENTS)
+                .from(Tables.PATIENTS)
+                .where(conditionFromDataParam(dateRangeParam.getLowerBound()))
+                .and(conditionFromDataParam(dateRangeParam.getUpperBound()))
+                .fetch();
+            for (var record : records)
             {
-                patientValues.add(resource.getIdPart());
+                var resource = resourceFromRecord(record.value1());
+                result.add(resource);
+                patientIds.add(resource.getIdPart());
             }
 
             span.setAttribute("audit.action", "search");
-            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientValues);
+            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientIds);
 
             return result;
         }
@@ -323,7 +252,6 @@ public class PatientProvider implements IResourceProvider
     }
 
     @Operation(name = "$merge", idempotent = false)
-    @Transactional
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
     {
@@ -340,44 +268,67 @@ public class PatientProvider implements IResourceProvider
                 var sourceIdType = sourceReference.getReferenceElement();
                 var targetIdType = targetReference.getReferenceElement();
 
-                if (sourceIdType == null)
+                if (sourceIdType == null || targetIdType == null)
                 {
-                    throw new IllegalArgumentException("Couldn't get source id type");
-                }
-                else if (targetIdType == null)
-                {
-                    throw new IllegalArgumentException("Couldn't get target id type");
+                    throw new InvalidRequestException("Needs source and target ids");
                 }
                 else if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
                 {
-                    throw new IllegalArgumentException("Cannot handle absolute references");
+                    throw new InvalidRequestException("Cannot handle absolute references");
                 }
-                else if (!"Patient".equals(sourceIdType.getResourceType()))
+                else if (!"Patient".equals(sourceIdType.getResourceType())
+                    || !"Patient".equals(targetIdType.getResourceType()))
                 {
-                    throw new IllegalArgumentException("Source reference is not of type Patient");
-                }
-                else if (!"Patient".equals(targetIdType.getResourceType()))
-                {
-                    throw new IllegalArgumentException("Target reference is not of type Patient");
+                    throw new InvalidRequestException("Source and target must be Patient");
                 }
 
                 var sourceId = sourceIdType.getIdPart();
                 var targetId = targetIdType.getIdPart();
 
-                if (sourceId == null)
-                {
-                    throw new IllegalArgumentException("Cannot get source id part");
-                }
-                else if (targetId == null)
-                {
-                    throw new IllegalArgumentException("Cannot get target id part");
-                }
+                var record = dsl.transactionResult(trx -> {
+                    var targetFetch = trx.dsl().select(Tables.PATIENTS)
+                        .from(Tables.PATIENTS)
+                        .where(Tables.PATIENTS.ID.equal(targetId))
+                        .fetchAny();
+                    if (targetFetch == null)
+                    {
+                        throw new InvalidRequestException("Target does not exist");
+                    }
+                    
+                    var targetRecord = targetFetch.value1();
+                    if (targetRecord.getMergedInto() != null)
+                    {
+                        throw new InvalidRequestException("Target is already merged");
+                    }
 
-                var patient = merge(sourceId, targetId);
+                    var sourceFetch = trx.dsl().select(Tables.PATIENTS.MERGED_INTO)
+                        .from(Tables.PATIENTS)
+                        .where(Tables.PATIENTS.ID.equal(sourceId))
+                        .fetchAny();
+                    if (sourceFetch == null)
+                    {
+                        throw new InvalidRequestException("Source does not exist");
+                    }
+
+                    if (sourceFetch.value1() != null)
+                    {
+                        throw new InvalidRequestException("Source is already merged");
+                    }
+
+                    trx.dsl().update(Tables.PATIENTS)
+                        .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
+                        .set(Tables.PATIENTS.MERGED_INTO, targetId)
+                        .where(Tables.PATIENTS.ID.equal(sourceId))
+                        .execute();
+
+                    return targetRecord;
+                });
+
+                var resource = resourceFromRecord(record);
 
                 parameters.addParameter().setName("outcome").setResource(
                     new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
-                parameters.addParameter().setName("result").setResource(patient);
+                parameters.addParameter().setName("result").setResource(resource);
 
                 span.setAttribute("audit.action", "merge");
                 span.setAttribute("audit.patient.soure", sourceId);
@@ -403,190 +354,183 @@ public class PatientProvider implements IResourceProvider
         }
     }
 
-    private MethodOutcome conditionalUpdate(String system, String value, Patient patient)
+    private MethodOutcome insertOrUpdatePatient(@Nullable String id, Patient patient)
+        throws JsonProcessingException
     {
-        MethodOutcome outcome;
-
-        String resourceId = patient.getIdPart();
-
-        var entities = new ArrayList<PatientEntity>();
-
-        var foundEntities = findBySystemAndValue(system, value);
-        if (foundEntities != null)
-        {
-            foundEntities.forEach(entities::add);
-        }
-        
-        // https://hl7.org/fhir/http.html#cond-update
-        var entityCount = entities.size();
-        if (entityCount == 0)
-        {
-            if (resourceId == null)
-            {
-                outcome = createAndSaveEntity(patient);
-            }
-            else
-            {
-                if (!repository.existsByResourceId(resourceId))
-                {
-                    outcome = createAndSaveEntity(resourceId, patient);
-                }
-                else
-                {
-                    throw new ResourceVersionConflictException("No matches, id provided and already exist");
-                }
-            }
-        }
-        else if (entityCount == 1)
-        {
-            var entity = entities.get(0);
-            if (entity == null)
-            {
-                throw new InternalErrorException("One match, but is null");
-            }
-            else if (resourceId == null || resourceId.equals(entity.getResourceId()))
-            {
-                outcome = updateAndSaveEntity(entity, patient);
-            }
-            else
-            {
-                throw new InvalidRequestException(
-                    "One match, resource id provided but does not match resource found");
-            }
-        }
-        else
-        {
-            throw new PreconditionFailedException("Multiple matches");
-        }
-
-        return outcome;
-    }
-
-    private MethodOutcome updateOrUpdateAsCreate(String resourceId, Patient patient)
-    {
-        MethodOutcome outcome;
-
-        var entity = repository.findByResourceId(resourceId).orElse(null);
-        if (entity != null)
-        {
-            outcome = updateAndSaveEntity(entity, patient);
-        }
-        else
-        {
-            outcome = createAndSaveEntity(resourceId, patient);
-        }
-
-        return outcome;
-    }
-
-    private MethodOutcome createAndSaveEntity(Patient patient)
-    {
-        String resourceId;
-        do
-        {
-            resourceId = UUID.randomUUID().toString();
-            if (resourceId == null)
-            {
-                throw new InternalErrorException("Cannot generate uuid string");
-            }
-        }
-        while (repository.existsByResourceId(resourceId));
-
-        return createAndSaveEntity(resourceId, patient);
-    }
-
-    private MethodOutcome createAndSaveEntity(String resourceId, Patient patient)
-    {
-        var entity = new PatientEntity(resourceId);
-
-        var outcome = updateAndSaveEntity(entity, patient);
-        outcome.setCreated(Boolean.TRUE);
-
-        return outcome;
-    }
-
-    private MethodOutcome updateAndSaveEntity(PatientEntity entity, Patient patient)
-    {
-        var entityIdentifiers = entity.getIdentifiers();
-        entityIdentifiers.clear();
+        var identifierList = new ArrayList<IdentifierRecord>();
 
         var patientIdentifiers = patient.getIdentifier();
         if (patientIdentifiers != null)
         {
             for (var patientIdentifier : patientIdentifiers)
             {
-                var value = patientIdentifier.getValue();
-                if (value != null)
+                if (patientIdentifier != null)
                 {
                     var system = patientIdentifier.getSystem();
-                    if (system != null)
+                    var value = patientIdentifier.getValue();
+                    if (system != null && value != null)
                     {
-                        entityIdentifiers.add(new IdentifierEmbeddable(system, value));
+                        identifierList.add(new IdentifierRecord(system, value));
                     }
                 }
             }
         }
 
-        entity.incrementVersion();
-        entity = repository.saveAndFlush(entity);
+        var identifierJson = objectMapper.writeValueAsString(identifierList);
 
-        var outcome = new MethodOutcome(
-            new IdType("Patient", entity.getResourceId()), Boolean.FALSE);
-        outcome.setResource(resourceFromEntity(entity));
+        var result = dsl.transactionResult(trx -> {
+            var resourceId = id;
+
+            Boolean created;
+            PatientsRecord patientRecord;
+
+            if (resourceId == null)
+            {
+                do
+                {
+                    resourceId = UUID.randomUUID().toString();
+                }
+                while (trx.dsl().selectOne().from(Tables.PATIENTS)
+                    .where(Tables.PATIENTS.ID.equal(resourceId)).fetchAny() != null);
+                
+                    created = Boolean.TRUE;
+            }
+            else
+            {
+                var mergedIntoRecord = trx.dsl()
+                    .select(Tables.PATIENTS.MERGED_INTO)
+                    .from(Tables.PATIENTS)
+                    .where(Tables.PATIENTS.ID.equal(resourceId))
+                    .fetchAny();
+                
+                if (mergedIntoRecord == null)
+                {
+                    created = Boolean.TRUE;
+                }
+                else if (mergedIntoRecord.value1() == null)
+                {
+                    created = Boolean.FALSE;
+                }
+                else
+                {
+                    throw new InvalidRequestException("Cannot update merged resource");
+                }
+            }
+
+            if (created.booleanValue())
+            {
+                patientRecord = trx.dsl().insertInto(Tables.PATIENTS)
+                    .set(Tables.PATIENTS.ID, resourceId)
+                    .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
+                    .set(Tables.PATIENTS.IDENTIFIERS, JSONB.jsonb(identifierJson))
+                    .returningResult(Tables.PATIENTS)
+                    .fetchAny().value1();
+            }
+            else
+            {
+                patientRecord = trx.dsl().update(Tables.PATIENTS)
+                    .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
+                    .set(Tables.PATIENTS.IDENTIFIERS, JSONB.jsonb(identifierJson))
+                    .where(Tables.PATIENTS.ID.equal(resourceId))
+                    .returningResult(Tables.PATIENTS)
+                    .fetchAny().value1();
+            }
+
+            return new CreateOrUpdateResult(created, patientRecord);
+        });
+
+        var resource = resourceFromRecord(result.record());
+
+        var outcome = new MethodOutcome(resource.getIdElement(), result.created());
+        outcome.setResource(resource);
 
         return outcome;
     }
 
-    private @Nullable Iterable<PatientEntity> findBySystemAndValue(@Nullable String system, @Nullable String value)
+    private Condition conditionFromDataParam(@Nullable DateParam param)
     {
-        Iterable<PatientEntity> result;
+        Condition condition;
 
-        if (system != null && !system.isEmpty())
+        if (param != null)
         {
-            if (value != null && !value.isEmpty())
+            var date = param.getValue();
+
+            if (date != null)
             {
-                result = repository.findByIdentifiers_SystemAndIdentifiers_Val(system, value);
+                var dateTime = OffsetDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
+
+                var prefix = param.getPrefix();
+
+                if (prefix != null)
+                {
+                    switch (prefix)
+                    {
+                    case GREATERTHAN:
+                        condition = Tables.PATIENTS.LAST_UPDATED.greaterThan(dateTime);
+                        break;
+                    case GREATERTHAN_OR_EQUALS:
+                        condition = Tables.PATIENTS.LAST_UPDATED.greaterOrEqual(dateTime);
+                        break;
+                    case LESSTHAN:
+                        condition = Tables.PATIENTS.LAST_UPDATED.lessThan(dateTime);
+                        break;
+                    case LESSTHAN_OR_EQUALS:
+                        condition = Tables.PATIENTS.LAST_UPDATED.lessOrEqual(dateTime);
+                        break;
+                    case NOT_EQUAL:
+                        condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                        break;
+                    case STARTS_AFTER:
+                    case ENDS_BEFORE:
+                        throw new InvalidRequestException("Unsupported prefix");
+                    case APPROXIMATE:
+                    case EQUAL:
+                    default:
+                        condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                        break;
+                    }
+                }
+                else
+                {
+                    condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                }
             }
             else
             {
-                result = repository.findByIdentifiers_System(system);
+                condition = DSL.trueCondition();
             }
-        }
-        else if (value != null && !value.isEmpty())
-        {
-            result = repository.findByIdentifiers_Val(value);
         }
         else
         {
-            result = null;
+            condition = DSL.trueCondition();
         }
 
-        return result;
+        return condition;
     }
 
-    private Patient resourceFromEntity(PatientEntity entity)
+    private Patient resourceFromRecord(PatientsRecord record) throws JsonProcessingException
     {
         var resource = new Patient();
 
-        resource.setId(entity.getResourceId());
+        resource.setIdElement(new IdType("Patient", record.getId()));
 
         var meta = new Meta();
-        meta.setVersionId(Long.toString(entity.getVersionId()));
-        meta.setLastUpdated(Date.from(entity.getUpdatedAt()));
+        meta.setLastUpdated(Date.from(record.getLastUpdated().toInstant()));
         resource.setMeta(meta);
-        
-        for (var identifier : entity.getIdentifiers())
+
+        var identifiers = objectMapper.readValue(record.getIdentifiers().data(), IdentifierRecord[].class);
+        for (var identifier : identifiers)
         {
-            resource.addIdentifier().setSystem(identifier.getSystem()).setValue(identifier.getVal());
+            resource.addIdentifier().setSystem(identifier.system()).setValue(identifier.value());
         }
 
-        var mergedInto = entity.getMergedInto();
+        var mergedInto = record.getMergedInto();
         if (mergedInto != null)
         {
             resource.setActive(false);
 
             resource.addLink()
-                .setOther(new Reference(new IdType("Patient", mergedInto.getResourceId())))
+                .setOther(new Reference(new IdType("Patient", mergedInto)))
                 .setType(LinkType.REPLACEDBY);
         }
         else
@@ -597,37 +541,8 @@ public class PatientProvider implements IResourceProvider
         return resource;
     }
 
-    private Patient merge(String sourceId, String targetId)
-    {
-        PatientEntity sourceEntity = repository.findByResourceId(sourceId).orElse(null);
-        PatientEntity targetEntity = repository.findByResourceId(targetId).orElse(null);
+    @JsonInclude(Include.NON_EMPTY)
+    private record IdentifierRecord(String system, String value) { }
 
-        if (sourceEntity == null)
-        {
-            throw new InvalidRequestException("Source patient not found");
-        }
-        else if (targetEntity == null)
-        {
-            throw new InvalidRequestException("Target patient not found");
-        }
-        else if (sourceEntity.getId().equals(targetEntity.getId()))
-        {
-            throw new InvalidRequestException("Source and target patient are the same");
-        }
-        else if (sourceEntity.getMergedInto() != null)
-        {
-            throw new InvalidRequestException("Source patient is already merged");
-        }
-        else if (targetEntity.getMergedInto() != null)
-        {
-            throw new InvalidRequestException("Target patient is already merged");
-        }
-
-        sourceEntity.setMergedInto(targetEntity);
-
-        sourceEntity.incrementVersion();
-        repository.save(sourceEntity);
-
-        return resourceFromEntity(targetEntity);
-    }
+    private record CreateOrUpdateResult(Boolean created, PatientsRecord record) { }
 }

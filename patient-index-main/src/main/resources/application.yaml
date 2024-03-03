@@ -4,3 +4,9 @@ logging:
       hibernate:
         SQL: debug
     de.tobchen: trace
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: password

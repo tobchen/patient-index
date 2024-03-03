@@ -9,40 +9,40 @@ import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Patient;
 import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.Patient.LinkType;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
-import de.tobchen.health.patientindex.main.model.repositories.PatientRepository;
 import io.opentelemetry.api.OpenTelemetry;
 
 @ExtendWith(SpringExtension.class)
-@DataJpaTest
 @TestInstance(Lifecycle.PER_CLASS)
 public class PatientProviderTests
 {
     @Autowired
-    private PatientRepository repository;
+    private DSLContext dslContext;
 
     private PatientProvider provider;
 
     @BeforeAll
     public void initTests()
     {
-        provider = new PatientProvider(OpenTelemetry.noop(), repository);
+        provider = new PatientProvider(OpenTelemetry.noop(), dslContext);
     }
 
     @Test
-    public void createWithIdAndGetById()
+    public void createWithIdAndGetById() throws JsonProcessingException
     {
-        var result = provider.update(new IdType("test-id"), null,
+        var result = provider.update(new IdType("test-id"),
             createPatient("test-id"));
         assertAll(result, "test-id", true);
 
@@ -51,7 +51,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithoutIdAndGetById()
+    public void createWithoutIdAndGetById() throws JsonProcessingException
     {
         var createOutcome = provider.create(createPatient());
         assertAll(createOutcome, true);
@@ -65,7 +65,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithOneIdentifierAndGetById()
+    public void createWithOneIdentifierAndGetById() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-get-by-id");
 
@@ -81,7 +81,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithOneIdentifierAndGetByIdentifier()
+    public void createWithOneIdentifierAndGetByIdentifier() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-get-by-identifier");
 
@@ -100,7 +100,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithOneIdentifierThenAddAnother()
+    public void createWithOneIdentifierThenAddAnother() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "one-id-add-another-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "one-id-add-another-2");
@@ -115,7 +115,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
+        var updateOutcome = provider.update(new IdType(id.getIdPart()),
             createPatient(id.getIdPart(), identifierOne, identifierTwo));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
@@ -126,7 +126,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithTwoIdentifiersThenRemoveOne()
+    public void createWithTwoIdentifiersThenRemoveOne() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "two-ids-remove-one-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "two-ids-remove-one-2");
@@ -141,7 +141,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
+        var updateOutcome = provider.update(new IdType(id.getIdPart()),
             createPatient(id.getIdPart(), identifierOne));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
@@ -152,7 +152,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithTwoIdentifiersReplaceOne()
+    public void createWithTwoIdentifiersReplaceOne() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "two-ids-replace-one-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "two-ids-replace-one-2");
@@ -168,7 +168,7 @@ public class PatientProviderTests
         assertNotNull(beforePatient);
         assertAll(beforePatient, id.getIdPart(), identifierOne, identifierTwo);
 
-        var updateOutcome = provider.update(new IdType(id.getIdPart()), null,
+        var updateOutcome = provider.update(new IdType(id.getIdPart()),
             createPatient(id.getIdPart(), identifierTwo, identifierThree));
         assertAll(updateOutcome, false);
         assertEquals(id.getIdPart(), updateOutcome.getId().getIdPart());
@@ -179,7 +179,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void createWithFourIdentifierAndGetByIdentifier()
+    public void createWithFourIdentifierAndGetByIdentifier() throws JsonProcessingException
     {
         var identifierOne = new Identifier("urn:oid:11.12.13", "four-id-get-by-identifier-1");
         var identifierTwo = new Identifier("urn:oid:11.12.13", "four-id-get-by-identifier-2");
@@ -203,7 +203,7 @@ public class PatientProviderTests
     }
 
     @Test
-    public void merge()
+    public void merge() throws JsonProcessingException
     {
         var sourceCreateOutcome = provider.create(createPatient());
         assertAll(sourceCreateOutcome, true);

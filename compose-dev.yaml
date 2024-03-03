@@ -1,0 +1,10 @@
+services:
+  postgres-patient-index:
+    image: postgres:16.1-bullseye
+    ports:
+      - 127.0.0.1:5432:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=postgres
+    volumes:
+      - ./patient-index-main/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
