@@ -4,3 +4,5 @@ CREATE TABLE patients (
     identifiers jsonb NOT NULL,
     merged_into varchar(64) REFERENCES patients(id)
 );
+
+

@@ -5,38 +5,53 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Patient;
 import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.Patient.LinkType;
-import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.TokenParam;
 import io.opentelemetry.api.OpenTelemetry;
+import org.testcontainers.containers.PostgreSQLContainer;
 
-@ExtendWith(SpringExtension.class)
 @TestInstance(Lifecycle.PER_CLASS)
 public class PatientProviderTests
 {
-    @Autowired
-    private DSLContext dslContext;
+    private PostgreSQLContainer<?> postgres;
 
     private PatientProvider provider;
 
     @BeforeAll
-    public void initTests()
+    public void initTests() throws SQLException
     {
-        provider = new PatientProvider(OpenTelemetry.noop(), dslContext);
+        postgres = new PostgreSQLContainer<>("postgres:16.1-bullseye");
+        postgres.withInitScript("init.sql");
+        postgres.start();
+
+        var connection = DriverManager.getConnection(
+            postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+
+        var dsl = DSL.using(connection, SQLDialect.POSTGRES);
+
+        provider = new PatientProvider(OpenTelemetry.noop(), dsl);
+    }
+
+    @AfterAll
+    public void destroyTests()
+    {
+        postgres.stop();
     }
 
     @Test

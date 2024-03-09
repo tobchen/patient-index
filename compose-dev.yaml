@@ -7,4 +7,4 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_USER=postgres
     volumes:
-      - ./patient-index-main/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
+      - ./patient-index-main/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
