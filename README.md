@@ -26,6 +26,16 @@ Check out the conformance statement for available methods and operations.
 
 The usual Spring Boot configuration applies (e.g. `server.port`).
 
+#### Development
+
+The Main component uses JOOQ for code generation. If the patients table schema changes regenerate sources with maven using the specific profile:
+
+```sh
+mvn generate-sources -P jooq-codegen
+```
+
+The PostgreSQL database must be running for successful execution. The */compose-dev.yaml* Docker Compose file builds such database.
+
 ### Patient Index Feed
 
 The *Patient Index* Feed component polls the *Patient Index* regularly for updated patient resources and generates HL7v2 ADT-A01 or -A40 messages depending on whether the updated resource has a `link` field or not. These messages are queued to be sent to the given HL7v2 receiver.
