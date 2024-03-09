@@ -117,6 +117,8 @@ public class PatientPoller
                         .returnBundle(Bundle.class);
                     
                     propagator.inject(Context.current(), query, otelSetter);
+
+                    logger.debug("Querying from {} to {}", checkLowerBound, checkUpperBound);
                     
                     var bundle = query.execute();
                     

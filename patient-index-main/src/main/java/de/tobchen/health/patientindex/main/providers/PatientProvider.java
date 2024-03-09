@@ -95,6 +95,8 @@ public class PatientProvider implements IResourceProvider
             span.setAttribute("audit.action", "create");
             span.setAttribute("audit.patient", outcome.getId().getIdPart());
 
+            logger.debug("Patient created!");
+
             return outcome;
         }
         catch (Throwable t)
@@ -126,6 +128,8 @@ public class PatientProvider implements IResourceProvider
 
             span.setAttribute("audit.action", outcome.getCreated().booleanValue() ? "create" : "update");
             span.setAttribute("audit.patient", outcome.getId().getIdPart());
+
+            logger.debug("Patient created or updated!");
 
             return outcome;
         }
