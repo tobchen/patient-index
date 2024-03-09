@@ -20,14 +20,9 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-jpa</artifactId>
+			<artifactId>spring-boot-starter-jooq</artifactId>
 		</dependency>
 
-		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
-			<scope>runtime</scope>
-		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
@@ -107,6 +102,54 @@
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
+
+	<profiles>
+		<profile>
+			<id>jooq-codegen</id>
+			<activation>
+				<activeByDefault>false</activeByDefault>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.jooq</groupId>
+						<artifactId>jooq-codegen-maven</artifactId>
+		
+						<executions>
+							<execution>
+								<id>jooq-codegen</id>
+								<phase>generate-sources</phase>
+								<goals>
+									<goal>generate</goal>
+								</goals>
+							</execution>
+						</executions>
+		
+						<configuration>
+							<jdbc>
+								<driver>org.postgresql.Driver</driver>
+								<url>jdbc:postgresql://localhost:5432/postgres</url>
+								<user>postgres</user>
+								<password>password</password>
+							</jdbc>
+		
+							<generator>
+								<database>
+									<name>org.jooq.meta.postgres.PostgresDatabase</name>
+									<includes>message_status|message|id_value</includes>
+								</database>
+		
+								<target>
+									<packageName>de.tobchen.health.patientindex.feed.jooq</packageName>
+									<directory>${project.basedir}/src/main/java</directory>
+								</target>
+							</generator>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 	<build>
 		<plugins>

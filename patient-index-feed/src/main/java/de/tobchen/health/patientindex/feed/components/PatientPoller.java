@@ -1,13 +1,14 @@
 package de.tobchen.health.patientindex.feed.components;
 
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.Patient;
+import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -19,8 +20,9 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.exceptions.FhirClientConnectionException;
 import ca.uhn.fhir.rest.gclient.DateClientParam;
 import ca.uhn.fhir.rest.gclient.IQuery;
-import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
-import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
+import de.tobchen.health.patientindex.feed.jooq.public_.Tables;
+import de.tobchen.health.patientindex.feed.jooq.public_.enums.MessageStatus;
+import de.tobchen.health.patientindex.feed.jooq.public_.tables.records.IdValueRecord;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
@@ -30,21 +32,21 @@ import io.opentelemetry.context.propagation.TextMapSetter;
 @Component
 public class PatientPoller
 {
+    private static final String LOWER_BOUND_KEY = "lower-bound";
+
     private final Logger logger = LoggerFactory.getLogger(PatientPoller.class);
 
     private final Tracer tracer;
     private final TextMapPropagator propagator;
     private final TextMapSetter<IQuery<Bundle>> otelSetter;
     
-    private final MessageRepository repository;
+    private final DSLContext dsl;
 
     private final IGenericClient client;
 
     private final MessageSender sender;
 
-    private final Instant checkFallback = Instant.now();
-
-    public PatientPoller(OpenTelemetry openTelemetry, MessageRepository repository,
+    public PatientPoller(OpenTelemetry openTelemetry, DSLContext dsl,
         IGenericClient client, MessageSender sender)
     {
         this.tracer = openTelemetry.getTracer(PatientPoller.class.getName());
@@ -62,150 +64,161 @@ public class PatientPoller
             }
         };
 
-        this.repository = repository;
+        this.dsl = dsl;
         this.client = client;
         this.sender = sender;
     }
 
-    @Scheduled(fixedDelay = 15, timeUnit = TimeUnit.SECONDS)
+    @Scheduled(fixedRate = 15, timeUnit = TimeUnit.SECONDS)
     public synchronized void poll()
     {
         var span = tracer.spanBuilder("PatientPoller.poll").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            Instant searchFrom = checkFallback;
-            var whitelist = new HashSet<PatientIdVid>();
+            var checkUpperBound = OffsetDateTime.now();
 
-            var topUpdatedAt = repository.findTopByOrderByPatientUpdatedAtDesc().orElse(null);
-            if (topUpdatedAt != null)
-            {
-                searchFrom = topUpdatedAt.getPatientUpdatedAt().minusSeconds(1);
+            var msgIds = dsl.transactionResult(trx -> {
+                var newMsgIds = new ArrayList<Integer>();
 
-                var whitelistStart = searchFrom.minusSeconds(1);
+                var checkLowerBoundFetch = trx.dsl().select(Tables.ID_VALUE)
+                    .from(Tables.ID_VALUE)
+                    .where(Tables.ID_VALUE.ID.equal(LOWER_BOUND_KEY))
+                    .fetchAny();
                 
-                for (var patientIdAndVersionId : repository.findByPatientUpdatedAtGreaterThanEqual(whitelistStart))
+                IdValueRecord checkLowerBoundRecord;
+                if (checkLowerBoundFetch != null)
                 {
-                    whitelist.add(new PatientIdVid(patientIdAndVersionId.getPatientId(),
-                        patientIdAndVersionId.getPatientVersionId()));
+                    checkLowerBoundRecord = checkLowerBoundFetch.value1();
                 }
-            }
-
-            var newMessages = new ArrayList<MessageEntity>();
-
-            try
-            {
-                var query = client.search()
-                    .forResource(Patient.class)
-                    .where(new DateClientParam(Constants.PARAM_LASTUPDATED)
-                        .after()
-                        .millis(Date.from(searchFrom)))
-                    .returnBundle(Bundle.class);
-                
-                propagator.inject(Context.current(), query, otelSetter);
-                
-                var bundle = query.execute();
-                
-                var entries = bundle.getEntry();
-                if (entries != null)
+                else
                 {
-                    for (var entry : entries)
+                    checkLowerBoundRecord = trx.dsl().newRecord(Tables.ID_VALUE);
+                    checkLowerBoundRecord.setId(LOWER_BOUND_KEY);
+                    checkLowerBoundRecord.setValueTs(checkUpperBound);
+                }
+
+                var checkLowerBound = checkLowerBoundRecord.getValueTs();
+
+                try
+                {
+                    var query = client.search()
+                        .forResource(Patient.class)
+                        .where(
+                            new DateClientParam(Constants.PARAM_LASTUPDATED)
+                                .after()
+                                .millis(Date.from(checkLowerBound.toInstant()))
+                        ).and(
+                            new DateClientParam(Constants.PARAM_LASTUPDATED)
+                                .beforeOrEquals()
+                                .millis(Date.from(checkUpperBound.toInstant()))
+                        ).sort()
+                        .ascending(Constants.PARAM_LASTUPDATED)
+                        .returnBundle(Bundle.class);
+                    
+                    propagator.inject(Context.current(), query, otelSetter);
+                    
+                    var bundle = query.execute();
+                    
+                    var entries = bundle.getEntry();
+                    if (entries != null)
                     {
-                        var resource = entry.getResource();
-                        if (!(resource instanceof Patient))
+                        for (var entry : entries)
                         {
-                            logger.info("Ignoring non Patient resource");
-                            continue;
-                        }
-
-                        var patient = (Patient) resource;
-                        var id = patient.getIdPart();
-                        if (id == null)
-                        {
-                            logger.info("Ignoring patient without id");
-                            continue;
-                        }
-
-                        var meta = patient.getMeta();
-                        if (meta == null)
-                        {
-                            logger.info("Ignoring patient {} without meta", id);
-                            continue;
-                        }
-
-                        var versionId = meta.getVersionId();
-                        if (versionId == null)
-                        {
-                            logger.info("Ignoring patient {} without version", id);
-                            continue;
-                        }
-
-                        var idVid = new PatientIdVid(id, versionId);
-                        if (whitelist.contains(idVid))
-                        {
-                            logger.info("Ignoring whitelisted patient {}", id);
-                            continue;
-                        }
-
-                        var lastUpdated = meta.getLastUpdated();
-                        if (lastUpdated == null)
-                        {
-                            logger.info("Ignoring patient {} without lastUpdated", id);
-                            continue;
-                        }
-
-                        String linkedId = null;
-
-                        var linkList = patient.getLink();
-                        if (linkList != null && linkList.size() > 0)
-                        {
-                            for (var link : linkList)
+                            var resource = entry.getResource();
+                            if (!(resource instanceof Patient))
                             {
-                                var reference = link.getOther();
-                                if (reference == null)
-                                {
-                                    logger.info("Ignoring null link reference for patient {}", id);
-                                    continue;
-                                }
-
-                                var referenceIdType = reference.getReferenceElement();
-                                if (!"Patient".equals(referenceIdType.getResourceType()))
-                                {
-                                    logger.info("Ignoring non patient link for patient {}", id);
-                                    continue;
-                                }
-
-                                linkedId = referenceIdType.getIdPart();
-                                if (linkedId == null)
-                                {
-                                    logger.info("Ignoring non patient id link for patient {}", id);
-                                }
-
-                                break;
-                            }
-
-                            if (linkedId == null)
-                            {
-                                logger.info("Ignoring patient {} with bad link", id);
+                                logger.info("Ignoring non Patient resource");
                                 continue;
                             }
+
+                            var patient = (Patient) resource;
+                            var id = patient.getIdPart();
+                            if (id == null)
+                            {
+                                logger.info("Ignoring patient without id");
+                                continue;
+                            }
+
+                            var meta = patient.getMeta();
+                            if (meta == null)
+                            {
+                                logger.info("Ignoring patient {} without meta", id);
+                                continue;
+                            }
+
+                            var lastUpdated = meta.getLastUpdated();
+                            if (lastUpdated == null)
+                            {
+                                logger.info("Ignoring patient {} without lastUpdated", id);
+                                continue;
+                            }
+
+                            String linkedId = null;
+
+                            var linkList = patient.getLink();
+                            if (linkList != null && linkList.size() > 0)
+                            {
+                                for (var link : linkList)
+                                {
+                                    var reference = link.getOther();
+                                    if (reference == null)
+                                    {
+                                        logger.info("Ignoring null link reference for patient {}", id);
+                                        continue;
+                                    }
+
+                                    var referenceIdType = reference.getReferenceElement();
+                                    if (!"Patient".equals(referenceIdType.getResourceType()))
+                                    {
+                                        logger.info("Ignoring non patient link for patient {}", id);
+                                        continue;
+                                    }
+
+                                    linkedId = referenceIdType.getIdPart();
+                                    if (linkedId == null)
+                                    {
+                                        logger.info("Ignoring non patient id link for patient {}", id);
+                                    }
+
+                                    break;
+                                }
+
+                                if (linkedId == null)
+                                {
+                                    logger.info("Ignoring patient {} with bad link", id);
+                                    continue;
+                                }
+                            }
+
+                            var messageRecord = trx.dsl().newRecord(Tables.MESSAGE);
+                            messageRecord.setPatientId(id);
+                            messageRecord.setPatientLastUpdated(OffsetDateTime.ofInstant(lastUpdated.toInstant(),
+                                ZoneId.systemDefault()));
+                            messageRecord.setPatientMergedIntoId(linkedId);
+                            messageRecord.setRecordedAt(OffsetDateTime.now());
+                            messageRecord.setStatus(MessageStatus.queued);
+
+                            messageRecord.store();
+
+                            newMsgIds.add(messageRecord.getId());
                         }
-
-                        newMessages.add(new MessageEntity(
-                            idVid.id(), idVid.versionId(), lastUpdated.toInstant(), linkedId));
                     }
+
+                    checkLowerBoundRecord.setValueTs(checkUpperBound);
+                    checkLowerBoundRecord.store();
                 }
-            }
-            catch (FhirClientConnectionException e)
-            {
-                logger.warn("Cannot connect to FHIR server");
-            }
+                catch (FhirClientConnectionException e)
+                {
+                    logger.warn("Cannot connect to FHIR server");
+                }
 
-            newMessages.sort((a, b) -> a.getPatientUpdatedAt().compareTo(b.getPatientUpdatedAt()));
+                return newMsgIds;
+            });
 
-            for (var entity : repository.saveAll(newMessages))
+            for (var id : msgIds)
             {
-                sender.queue(entity.getId());
+                sender.queue(id);
             }
         }
         finally
@@ -213,6 +226,4 @@ public class PatientPoller
             span.end();
         }
     }
-
-    private record PatientIdVid(String id, @Nullable String versionId) { };
 }

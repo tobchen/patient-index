@@ -8,3 +8,4 @@ services:
       - POSTGRES_USER=postgres
     volumes:
       - ./patient-index-main/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
+      - ./patient-index-feed/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-feed.sql

@@ -4,8 +4,8 @@
 package de.tobchen.health.patientindex.main.jooq.public_;
 
 
-import de.tobchen.health.patientindex.main.jooq.public_.tables.Patients;
-import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientsRecord;
+import de.tobchen.health.patientindex.main.jooq.public_.tables.Patient;
+import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientRecord;
 
 import org.jooq.ForeignKey;
 import org.jooq.TableField;
@@ -25,11 +25,11 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final UniqueKey<PatientsRecord> PATIENTS_PKEY = Internal.createUniqueKey(Patients.PATIENTS, DSL.name("patients_pkey"), new TableField[] { Patients.PATIENTS.ID }, true);
+    public static final UniqueKey<PatientRecord> PATIENT_PKEY = Internal.createUniqueKey(Patient.PATIENT, DSL.name("patient_pkey"), new TableField[] { Patient.PATIENT.ID }, true);
 
     // -------------------------------------------------------------------------
     // FOREIGN KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final ForeignKey<PatientsRecord, PatientsRecord> PATIENTS__PATIENTS_MERGED_INTO_FKEY = Internal.createForeignKey(Patients.PATIENTS, DSL.name("patients_merged_into_fkey"), new TableField[] { Patients.PATIENTS.MERGED_INTO }, Keys.PATIENTS_PKEY, new TableField[] { Patients.PATIENTS.ID }, true);
+    public static final ForeignKey<PatientRecord, PatientRecord> PATIENT__PATIENT_MERGED_INTO_FKEY = Internal.createForeignKey(Patient.PATIENT, DSL.name("patient_merged_into_fkey"), new TableField[] { Patient.PATIENT.MERGED_INTO }, Keys.PATIENT_PKEY, new TableField[] { Patient.PATIENT.ID }, true);
 }

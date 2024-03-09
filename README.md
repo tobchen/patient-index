@@ -59,6 +59,16 @@ The following properties are required and have no defaults:
 |`patient-index.feed.receiver.host`|The message receiver hostname|`localhost`|
 |`patient-index.feed.receiver.port`|The message receiver port|`6060`|
 
+#### Development
+
+The Main component uses JOOQ for code generation. If the table schemas change regenerate sources with maven using the specific profile:
+
+```sh
+mvn generate-sources -P jooq-codegen
+```
+
+The PostgreSQL database must be running for successful execution. The */compose-dev.yaml* Docker Compose file builds such database.
+
 ### Patient Index Web Service
 
 The *Patient Index* Web Service queries the *Patient Index* on incoming requests.

@@ -22,7 +22,11 @@ import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
+import org.jooq.Record1;
+import org.jooq.Result;
 import org.jooq.impl.DSL;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -39,16 +43,19 @@ import ca.uhn.fhir.rest.annotation.Read;
 import ca.uhn.fhir.rest.annotation.RequiredParam;
 import ca.uhn.fhir.rest.annotation.ResourceParam;
 import ca.uhn.fhir.rest.annotation.Search;
+import ca.uhn.fhir.rest.annotation.Sort;
 import ca.uhn.fhir.rest.annotation.Update;
 import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.api.SortOrderEnum;
+import ca.uhn.fhir.rest.api.SortSpec;
 import ca.uhn.fhir.rest.param.DateParam;
 import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import de.tobchen.health.patientindex.main.jooq.public_.Tables;
-import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientsRecord;
+import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientRecord;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Tracer;
@@ -56,6 +63,8 @@ import io.opentelemetry.api.trace.Tracer;
 @Service
 public class PatientProvider implements IResourceProvider
 {
+    private final Logger logger = LoggerFactory.getLogger(PatientProvider.class);
+
     private final Tracer tracer;
 
     private final DSLContext dsl;
@@ -140,9 +149,9 @@ public class PatientProvider implements IResourceProvider
         {
             Patient resource;
 
-            var record = dsl.select(Tables.PATIENTS)
-                .from(Tables.PATIENTS)
-                .where(Tables.PATIENTS.ID.equal(resourceId.getIdPart()))
+            var record = dsl.select(Tables.PATIENT)
+                .from(Tables.PATIENT)
+                .where(Tables.PATIENT.ID.equal(resourceId.getIdPart()))
                 .fetchAny();
             if (record != null)
             {
@@ -184,9 +193,9 @@ public class PatientProvider implements IResourceProvider
             var identifier = new IdentifierRecord(resourceIdentifier.getSystem(), resourceIdentifier.getValue());
             var identifierJson = objectMapper.writeValueAsString(new IdentifierRecord[] { identifier });
 
-            var records = dsl.select(Tables.PATIENTS)
-                .from(Tables.PATIENTS)
-                .where(Tables.PATIENTS.IDENTIFIERS.contains(JSONB.jsonb(identifierJson)))
+            var records = dsl.select(Tables.PATIENT)
+                .from(Tables.PATIENT)
+                .where(Tables.PATIENT.IDENTIFIERS.contains(JSONB.jsonb(identifierJson)))
                 .fetch();
             for (var record : records)
             {
@@ -213,32 +222,57 @@ public class PatientProvider implements IResourceProvider
 
     @Search
     public List<Patient> searchByLastUpdated(
-        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam)
+        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam,
+        @Sort SortSpec sort)
         throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.searchByLastUpdated").startSpan();
 
         try (var scope = span.makeCurrent())
         {
-            var result = new ArrayList<Patient>();
+            var patients = new ArrayList<Patient>();
             var patientIds = new ArrayList<String>();
 
-            var records = dsl.select(Tables.PATIENTS)
-                .from(Tables.PATIENTS)
+            var query = dsl.select(Tables.PATIENT)
+                .from(Tables.PATIENT)
                 .where(conditionFromDataParam(dateRangeParam.getLowerBound()))
-                .and(conditionFromDataParam(dateRangeParam.getUpperBound()))
-                .fetch();
-            for (var record : records)
+                .and(conditionFromDataParam(dateRangeParam.getUpperBound()));
+            
+            Result<Record1<PatientRecord>> result;
+
+            if (sort != null)
+            {
+                if (!Constants.PARAM_LASTUPDATED.equals(sort.getParamName()) || sort.getChain() != null)
+                {
+                    logger.debug("Tried to sort by {}", sort.getParamName());
+                    throw new InvalidRequestException("Can only sort by lastUpdated");
+                }
+
+                if (SortOrderEnum.DESC.equals(sort.getOrder()))
+                {
+                    result = query.orderBy(Tables.PATIENT.LAST_UPDATED.desc()).fetch();
+                }
+                else
+                {
+                    result = query.orderBy(Tables.PATIENT.LAST_UPDATED).fetch();
+                }
+            }
+            else
+            {
+                result = query.fetch();
+            }
+
+            for (var record : result)
             {
                 var resource = resourceFromRecord(record.value1());
-                result.add(resource);
+                patients.add(resource);
                 patientIds.add(resource.getIdPart());
             }
 
             span.setAttribute("audit.action", "search");
             span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientIds);
 
-            return result;
+            return patients;
         }
         catch (Throwable t)
         {
@@ -286,9 +320,9 @@ public class PatientProvider implements IResourceProvider
                 var targetId = targetIdType.getIdPart();
 
                 var record = dsl.transactionResult(trx -> {
-                    var targetFetch = trx.dsl().select(Tables.PATIENTS)
-                        .from(Tables.PATIENTS)
-                        .where(Tables.PATIENTS.ID.equal(targetId))
+                    var targetFetch = trx.dsl().select(Tables.PATIENT)
+                        .from(Tables.PATIENT)
+                        .where(Tables.PATIENT.ID.equal(targetId))
                         .fetchAny();
                     if (targetFetch == null)
                     {
@@ -301,9 +335,9 @@ public class PatientProvider implements IResourceProvider
                         throw new InvalidRequestException("Target is already merged");
                     }
 
-                    var sourceFetch = trx.dsl().select(Tables.PATIENTS.MERGED_INTO)
-                        .from(Tables.PATIENTS)
-                        .where(Tables.PATIENTS.ID.equal(sourceId))
+                    var sourceFetch = trx.dsl().select(Tables.PATIENT.MERGED_INTO)
+                        .from(Tables.PATIENT)
+                        .where(Tables.PATIENT.ID.equal(sourceId))
                         .fetchAny();
                     if (sourceFetch == null)
                     {
@@ -315,10 +349,10 @@ public class PatientProvider implements IResourceProvider
                         throw new InvalidRequestException("Source is already merged");
                     }
 
-                    trx.dsl().update(Tables.PATIENTS)
-                        .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
-                        .set(Tables.PATIENTS.MERGED_INTO, targetId)
-                        .where(Tables.PATIENTS.ID.equal(sourceId))
+                    trx.dsl().update(Tables.PATIENT)
+                        .set(Tables.PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
+                        .set(Tables.PATIENT.MERGED_INTO, targetId)
+                        .where(Tables.PATIENT.ID.equal(sourceId))
                         .execute();
 
                     return targetRecord;
@@ -382,7 +416,7 @@ public class PatientProvider implements IResourceProvider
             var resourceId = id;
 
             Boolean created;
-            PatientsRecord patientRecord;
+            PatientRecord patientRecord;
 
             if (resourceId == null)
             {
@@ -390,17 +424,17 @@ public class PatientProvider implements IResourceProvider
                 {
                     resourceId = UUID.randomUUID().toString();
                 }
-                while (trx.dsl().selectOne().from(Tables.PATIENTS)
-                    .where(Tables.PATIENTS.ID.equal(resourceId)).fetchAny() != null);
+                while (trx.dsl().selectOne().from(Tables.PATIENT)
+                    .where(Tables.PATIENT.ID.equal(resourceId)).fetchAny() != null);
                 
-                    created = Boolean.TRUE;
+                created = Boolean.TRUE;
             }
             else
             {
                 var mergedIntoRecord = trx.dsl()
-                    .select(Tables.PATIENTS.MERGED_INTO)
-                    .from(Tables.PATIENTS)
-                    .where(Tables.PATIENTS.ID.equal(resourceId))
+                    .select(Tables.PATIENT.MERGED_INTO)
+                    .from(Tables.PATIENT)
+                    .where(Tables.PATIENT.ID.equal(resourceId))
                     .fetchAny();
                 
                 if (mergedIntoRecord == null)
@@ -419,20 +453,20 @@ public class PatientProvider implements IResourceProvider
 
             if (created.booleanValue())
             {
-                patientRecord = trx.dsl().insertInto(Tables.PATIENTS)
-                    .set(Tables.PATIENTS.ID, resourceId)
-                    .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
-                    .set(Tables.PATIENTS.IDENTIFIERS, JSONB.jsonb(identifierJson))
-                    .returningResult(Tables.PATIENTS)
+                patientRecord = trx.dsl().insertInto(Tables.PATIENT)
+                    .set(Tables.PATIENT.ID, resourceId)
+                    .set(Tables.PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
+                    .set(Tables.PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
+                    .returningResult(Tables.PATIENT)
                     .fetchAny().value1();
             }
             else
             {
-                patientRecord = trx.dsl().update(Tables.PATIENTS)
-                    .set(Tables.PATIENTS.LAST_UPDATED, DSL.currentOffsetDateTime())
-                    .set(Tables.PATIENTS.IDENTIFIERS, JSONB.jsonb(identifierJson))
-                    .where(Tables.PATIENTS.ID.equal(resourceId))
-                    .returningResult(Tables.PATIENTS)
+                patientRecord = trx.dsl().update(Tables.PATIENT)
+                    .set(Tables.PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
+                    .set(Tables.PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
+                    .where(Tables.PATIENT.ID.equal(resourceId))
+                    .returningResult(Tables.PATIENT)
                     .fetchAny().value1();
             }
 
@@ -466,19 +500,19 @@ public class PatientProvider implements IResourceProvider
                     switch (prefix)
                     {
                     case GREATERTHAN:
-                        condition = Tables.PATIENTS.LAST_UPDATED.greaterThan(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.greaterThan(dateTime);
                         break;
                     case GREATERTHAN_OR_EQUALS:
-                        condition = Tables.PATIENTS.LAST_UPDATED.greaterOrEqual(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.greaterOrEqual(dateTime);
                         break;
                     case LESSTHAN:
-                        condition = Tables.PATIENTS.LAST_UPDATED.lessThan(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.lessThan(dateTime);
                         break;
                     case LESSTHAN_OR_EQUALS:
-                        condition = Tables.PATIENTS.LAST_UPDATED.lessOrEqual(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.lessOrEqual(dateTime);
                         break;
                     case NOT_EQUAL:
-                        condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.equal(dateTime);
                         break;
                     case STARTS_AFTER:
                     case ENDS_BEFORE:
@@ -486,13 +520,13 @@ public class PatientProvider implements IResourceProvider
                     case APPROXIMATE:
                     case EQUAL:
                     default:
-                        condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                        condition = Tables.PATIENT.LAST_UPDATED.equal(dateTime);
                         break;
                     }
                 }
                 else
                 {
-                    condition = Tables.PATIENTS.LAST_UPDATED.equal(dateTime);
+                    condition = Tables.PATIENT.LAST_UPDATED.equal(dateTime);
                 }
             }
             else
@@ -508,7 +542,7 @@ public class PatientProvider implements IResourceProvider
         return condition;
     }
 
-    private Patient resourceFromRecord(PatientsRecord record) throws JsonProcessingException
+    private Patient resourceFromRecord(PatientRecord record) throws JsonProcessingException
     {
         var resource = new Patient();
 
@@ -544,5 +578,5 @@ public class PatientProvider implements IResourceProvider
     @JsonInclude(Include.NON_EMPTY)
     private record IdentifierRecord(String system, String value) { }
 
-    private record CreateOrUpdateResult(Boolean created, PatientsRecord record) { }
+    private record CreateOrUpdateResult(Boolean created, PatientRecord record) { }
 }

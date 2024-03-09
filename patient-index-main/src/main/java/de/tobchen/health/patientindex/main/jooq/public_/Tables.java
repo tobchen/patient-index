@@ -4,7 +4,7 @@
 package de.tobchen.health.patientindex.main.jooq.public_;
 
 
-import de.tobchen.health.patientindex.main.jooq.public_.tables.Patients;
+import de.tobchen.health.patientindex.main.jooq.public_.tables.Patient;
 
 
 /**
@@ -14,7 +14,7 @@ import de.tobchen.health.patientindex.main.jooq.public_.tables.Patients;
 public class Tables {
 
     /**
-     * The table <code>public.patients</code>.
+     * The table <code>public.patient</code>.
      */
-    public static final Patients PATIENTS = Patients.PATIENTS;
+    public static final Patient PATIENT = Patient.PATIENT;
 }

@@ -5,6 +5,12 @@ logging:
         SQL: debug
     de.tobchen: trace
 
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: password
+
 patient-index:
   fhir:
     server: http://localhost:8080/fhir/r5

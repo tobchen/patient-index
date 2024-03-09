@@ -1,11 +1,12 @@
 package de.tobchen.health.patientindex.feed.components;
 
 import java.io.IOException;
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,9 +26,9 @@ import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
 import ca.uhn.hl7v2.parser.PipeParser;
-import de.tobchen.health.patientindex.feed.model.entities.MessageEntity;
-import de.tobchen.health.patientindex.feed.model.enums.MessageStatus;
-import de.tobchen.health.patientindex.feed.model.repositories.MessageRepository;
+import de.tobchen.health.patientindex.feed.jooq.public_.Tables;
+import de.tobchen.health.patientindex.feed.jooq.public_.enums.MessageStatus;
+import de.tobchen.health.patientindex.feed.jooq.public_.tables.records.MessageRecord;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -42,7 +43,7 @@ public class MessageSender
 
     private final HapiContext context;
 
-    private final MessageRepository repository;
+    private final DSLContext dsl;
 
     private final String serverHost;
     private final int serverPort;
@@ -63,7 +64,7 @@ public class MessageSender
     @Nullable
     private Connection connection;
 
-    public MessageSender(OpenTelemetry openTelemetry, HapiContext context, MessageRepository repository,
+    public MessageSender(OpenTelemetry openTelemetry, HapiContext context, DSLContext dsl,
         @Value("${patient-index.feed.receiver.host}") String serverHost,
         @Value("${patient-index.feed.receiver.port}") int serverPort,
         @Value("${patient-index.pid-oid}") String pidOid,
@@ -76,7 +77,7 @@ public class MessageSender
 
         this.context = context;
 
-        this.repository = repository;
+        this.dsl = dsl;
 
         this.serverHost = serverHost;
         this.serverPort = serverPort;
@@ -89,18 +90,23 @@ public class MessageSender
 
         executor = Context.taskWrapping(Executors.newSingleThreadExecutor());
 
-        for (var msgId : repository.findByStatusOrderByPatientUpdatedAtAsc(MessageStatus.QUEUED))
+        var msgIds = dsl.select(Tables.MESSAGE.ID)
+            .from(Tables.MESSAGE)
+            .where(Tables.MESSAGE.STATUS.equal(MessageStatus.queued))
+            .orderBy(Tables.MESSAGE.PATIENT_LAST_UPDATED)
+            .fetch();
+        for (var msgId : msgIds)
         {
-            queue(msgId.getId());
+            queue(msgId.value1());
         }
     }
 
-    public void queue(Long messageId)
+    public void queue(Integer msgId)
     {
-        executor.submit(new MessageTask(messageId));
+        executor.submit(new MessageTask(msgId));
     }
 
-    private synchronized void handleMessage(Long messageId)
+    private synchronized void handleMessage(Integer messageId)
     {
         var span = tracer.spanBuilder("MessageSender.handleMessage").setNoParent().startSpan();
 
@@ -108,72 +114,89 @@ public class MessageSender
         {
             logger.debug("Trying to send message {}", messageId);
 
-            var entity = repository.findById(messageId).orElse(null);
-
-            if (entity != null && entity.getStatus() == MessageStatus.QUEUED)
+            var result = dsl.select(Tables.MESSAGE)
+                .from(Tables.MESSAGE)
+                .where(Tables.MESSAGE.ID.equal(messageId))
+                .fetchAny();
+            
+            if (result != null)
             {
-                var hl7v2Message = createHl7Message(entity);
-                if (hl7v2Message != null)
+                var message = result.value1();
+
+                if (message.getStatus().equals(MessageStatus.queued))
                 {
-                    try
+                    var hl7v2Message = createHl7Message(message);
+                    if (hl7v2Message != null)
                     {
-                        span.setAttribute("mllp.message", parser.encode(hl7v2Message).replace("\r", "\n"));
-                    }
-                    catch (HL7Exception e)
-                    {
-                        logger.error("Cannot encode message");
-                    }
-
-                    Message response;
-                    long attemptCount = 0;
-
-                    while (true)
-                    {
-                        ++attemptCount;
-
-                        response = sendMessage(hl7v2Message);
-                        if (response != null)
+                        try
                         {
-                            break;
+                            span.setAttribute("mllp.message",
+                                parser.encode(hl7v2Message).replace("\r", "\n"));
                         }
-                        else
+                        catch (HL7Exception e)
                         {
-                            logger.info("Waiting for {} milliseconds", retryTimeout);
-                            try
+                            logger.error("Cannot encode message");
+                        }
+
+                        Message response;
+                        long attemptCount = 0;
+
+                        while (true)
+                        {
+                            ++attemptCount;
+
+                            response = sendMessage(hl7v2Message);
+                            if (response != null)
                             {
-                                Thread.sleep(retryTimeout);
+                                break;
                             }
-                            catch (InterruptedException e)
+                            else
                             {
-                                logger.warn("Retry timeout interrupted", e);
+                                logger.info("Waiting for {} milliseconds", retryTimeout);
+                                try
+                                {
+                                    Thread.sleep(retryTimeout);
+                                }
+                                catch (InterruptedException e)
+                                {
+                                    logger.warn("Retry timeout interrupted", e);
+                                }
                             }
                         }
-                    }
 
-                    entity.setStatus(MessageStatus.SENT);
-                    repository.save(entity);
+                        dsl.update(Tables.MESSAGE)
+                            .set(Tables.MESSAGE.STATUS, MessageStatus.sent)
+                            .where(Tables.MESSAGE.ID.equal(messageId))
+                            .execute();
 
-                    span.setAttribute("mllp.attempts", attemptCount);
-                    try
-                    {
-                        span.setAttribute("mllp.response", parser.encode(response).replace("\r", "\n"));
+                        span.setAttribute("mllp.attempts", attemptCount);
+                        try
+                        {
+                            span.setAttribute("mllp.response", parser.encode(response).replace("\r", "\n"));
+                        }
+                        catch (HL7Exception e)
+                        {
+                            logger.error("Cannot encode response");
+                        }
                     }
-                    catch (HL7Exception e)
+                    else
                     {
-                        logger.error("Cannot encode response");
+                        dsl.update(Tables.MESSAGE)
+                            .set(Tables.MESSAGE.STATUS, MessageStatus.failed)
+                            .where(Tables.MESSAGE.ID.equal(messageId))
+                            .execute();
+
+                        span.setStatus(StatusCode.ERROR, "Failed to create HL7v2 message");
                     }
                 }
                 else
                 {
-                    entity.setStatus(MessageStatus.FAILED);
-                    repository.save(entity);
-
-                    span.setStatus(StatusCode.ERROR, "Failed to create HL7v2 message");
+                    logger.info("Skipping message {}", message.getId());
                 }
             }
             else
             {
-                logger.info("Skipping message {}", messageId);
+                logger.info("Couldn't find {}", messageId);
             }
         }
         finally
@@ -182,18 +205,18 @@ public class MessageSender
         }
     }
 
-    private @Nullable Message createHl7Message(MessageEntity msgEntity)
+    private @Nullable Message createHl7Message(MessageRecord msgEntity)
     {
         Message result;
 
         try
         {
-            var linkedPatientId = msgEntity.getLinkedPatientId();
+            var linkedPatientId = msgEntity.getPatientMergedIntoId();
             if (linkedPatientId == null)
             {
                 var hl7Msg = new ADT_A01();                
                 setSegment(hl7Msg.getMSH(), "A01", msgEntity.getId());
-                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientUpdatedAt());
+                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientLastUpdated());
                 setSegment(hl7Msg.getPID(), msgEntity.getPatientId());
                 hl7Msg.getPV1().getPatientClass().setValue("N");
 
@@ -203,7 +226,7 @@ public class MessageSender
             {
                 var hl7Msg = new ADT_A39();
                 setSegment(hl7Msg.getMSH(), "A40", msgEntity.getId());
-                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientUpdatedAt());
+                setSegment(hl7Msg.getEVN(), msgEntity.getRecordedAt(), msgEntity.getPatientLastUpdated());
                 var patientGroup = hl7Msg.getPIDPD1MRGPV1();
                 setSegment(patientGroup.getPID(), linkedPatientId);
                 setPidCx(patientGroup.getMRG().getPriorPatientIdentifierList(0), msgEntity.getPatientId());
@@ -220,7 +243,8 @@ public class MessageSender
         return result;
     }
 
-    private void setSegment(@Nullable MSH msh, String triggerEvent, Long messageId) throws DataTypeException
+    private void setSegment(@Nullable MSH msh, String triggerEvent, Integer messageId)
+        throws DataTypeException
     {
         if (msh != null)
         {
@@ -255,12 +279,13 @@ public class MessageSender
         }
     }
 
-    private static void setSegment(@Nullable EVN evn, Instant recordedAt, Instant occuredAt) throws DataTypeException
+    private static void setSegment(@Nullable EVN evn, OffsetDateTime recordedAt, OffsetDateTime occuredAt)
+        throws DataTypeException
     {
         if (evn != null)
         {
-            evn.getRecordedDateTime().getTimeOfAnEvent().setValue(Date.from(recordedAt));
-            evn.getEventOccurred().getTimeOfAnEvent().setValue(Date.from(occuredAt));
+            evn.getRecordedDateTime().getTimeOfAnEvent().setValue(Date.from(recordedAt.toInstant()));
+            evn.getEventOccurred().getTimeOfAnEvent().setValue(Date.from(occuredAt.toInstant()));
         }
     }
 
@@ -322,20 +347,20 @@ public class MessageSender
 
     private class MessageTask implements Runnable
     {
-        private final Long messageId;
+        private final Integer msgId;
 
-        public MessageTask(Long messageId)
+        public MessageTask(Integer msgId)
         {
-            this.messageId = messageId;
+            this.msgId = msgId;
         }
 
         @Override
         public void run()
         {
-            var messageId = this.messageId;
-            if (messageId != null)
+            var msgId = this.msgId;
+            if (msgId != null)
             {
-                handleMessage(messageId);
+                handleMessage(msgId);
             }
         }
     }

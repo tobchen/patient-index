@@ -146,7 +146,7 @@
 							<generator>
 								<database>
 									<name>org.jooq.meta.postgres.PostgresDatabase</name>
-									<includes>patients</includes>
+									<includes>patient</includes>
 								</database>
 		
 								<target>
