@@ -26,7 +26,7 @@ import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
 import ca.uhn.hl7v2.parser.PipeParser;
-import de.tobchen.health.patientindex.feed.jooq.public_.Tables;
+import static de.tobchen.health.patientindex.feed.jooq.public_.Tables.*;
 import de.tobchen.health.patientindex.feed.jooq.public_.enums.MessageStatus;
 import de.tobchen.health.patientindex.feed.jooq.public_.tables.records.MessageRecord;
 import io.opentelemetry.api.OpenTelemetry;
@@ -90,10 +90,10 @@ public class MessageSender
 
         executor = Context.taskWrapping(Executors.newSingleThreadExecutor());
 
-        var msgIds = dsl.select(Tables.MESSAGE.ID)
-            .from(Tables.MESSAGE)
-            .where(Tables.MESSAGE.STATUS.equal(MessageStatus.queued))
-            .orderBy(Tables.MESSAGE.PATIENT_LAST_UPDATED)
+        var msgIds = dsl.select(MESSAGE.ID)
+            .from(MESSAGE)
+            .where(MESSAGE.STATUS.equal(MessageStatus.queued))
+            .orderBy(MESSAGE.PATIENT_LAST_UPDATED)
             .fetch();
         for (var msgId : msgIds)
         {
@@ -114,9 +114,9 @@ public class MessageSender
         {
             logger.debug("Trying to send message {}", messageId);
 
-            var result = dsl.select(Tables.MESSAGE)
-                .from(Tables.MESSAGE)
-                .where(Tables.MESSAGE.ID.equal(messageId))
+            var result = dsl.select(MESSAGE)
+                .from(MESSAGE)
+                .where(MESSAGE.ID.equal(messageId))
                 .fetchAny();
             
             if (result != null)
@@ -164,9 +164,9 @@ public class MessageSender
                             }
                         }
 
-                        dsl.update(Tables.MESSAGE)
-                            .set(Tables.MESSAGE.STATUS, MessageStatus.sent)
-                            .where(Tables.MESSAGE.ID.equal(messageId))
+                        dsl.update(MESSAGE)
+                            .set(MESSAGE.STATUS, MessageStatus.sent)
+                            .where(MESSAGE.ID.equal(messageId))
                             .execute();
 
                         span.setAttribute("mllp.attempts", attemptCount);
@@ -181,9 +181,9 @@ public class MessageSender
                     }
                     else
                     {
-                        dsl.update(Tables.MESSAGE)
-                            .set(Tables.MESSAGE.STATUS, MessageStatus.failed)
-                            .where(Tables.MESSAGE.ID.equal(messageId))
+                        dsl.update(MESSAGE)
+                            .set(MESSAGE.STATUS, MessageStatus.failed)
+                            .where(MESSAGE.ID.equal(messageId))
                             .execute();
 
                         span.setStatus(StatusCode.ERROR, "Failed to create HL7v2 message");

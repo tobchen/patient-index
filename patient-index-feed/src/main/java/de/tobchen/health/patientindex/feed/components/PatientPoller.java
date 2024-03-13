@@ -20,7 +20,7 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.exceptions.FhirClientConnectionException;
 import ca.uhn.fhir.rest.gclient.DateClientParam;
 import ca.uhn.fhir.rest.gclient.IQuery;
-import de.tobchen.health.patientindex.feed.jooq.public_.Tables;
+import static de.tobchen.health.patientindex.feed.jooq.public_.Tables.*;
 import de.tobchen.health.patientindex.feed.jooq.public_.enums.MessageStatus;
 import de.tobchen.health.patientindex.feed.jooq.public_.tables.records.IdValueRecord;
 import io.opentelemetry.api.OpenTelemetry;
@@ -81,9 +81,9 @@ public class PatientPoller
             var msgIds = dsl.transactionResult(trx -> {
                 var newMsgIds = new ArrayList<Integer>();
 
-                var checkLowerBoundFetch = trx.dsl().select(Tables.ID_VALUE)
-                    .from(Tables.ID_VALUE)
-                    .where(Tables.ID_VALUE.ID.equal(LOWER_BOUND_KEY))
+                var checkLowerBoundFetch = trx.dsl().select(ID_VALUE)
+                    .from(ID_VALUE)
+                    .where(ID_VALUE.ID.equal(LOWER_BOUND_KEY))
                     .fetchAny();
                 
                 IdValueRecord checkLowerBoundRecord;
@@ -93,7 +93,7 @@ public class PatientPoller
                 }
                 else
                 {
-                    checkLowerBoundRecord = trx.dsl().newRecord(Tables.ID_VALUE);
+                    checkLowerBoundRecord = trx.dsl().newRecord(ID_VALUE);
                     checkLowerBoundRecord.setId(LOWER_BOUND_KEY);
                     checkLowerBoundRecord.setValueTs(checkUpperBound);
                 }
@@ -193,7 +193,7 @@ public class PatientPoller
                                 }
                             }
 
-                            var messageRecord = trx.dsl().newRecord(Tables.MESSAGE);
+                            var messageRecord = trx.dsl().newRecord(MESSAGE);
                             messageRecord.setPatientId(id);
                             messageRecord.setPatientLastUpdated(OffsetDateTime.ofInstant(lastUpdated.toInstant(),
                                 ZoneId.systemDefault()));
