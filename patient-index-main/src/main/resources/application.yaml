@@ -1,8 +1,6 @@
 logging:
   level:
-    org:
-      hibernate:
-        SQL: debug
+    org.jooq.tools.LoggerListener: debug
     de.tobchen: trace
 
 spring:
