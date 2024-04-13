@@ -239,8 +239,8 @@ public class PatientProvider implements IResourceProvider
 
             var query = dsl.select(PATIENT)
                 .from(PATIENT)
-                .where(conditionFromDataParam(dateRangeParam.getLowerBound()))
-                .and(conditionFromDataParam(dateRangeParam.getUpperBound()));
+                .where(conditionFromDateParam(dateRangeParam.getLowerBound()))
+                .and(conditionFromDateParam(dateRangeParam.getUpperBound()));
             
             Result<Record1<PatientRecord>> result;
 
@@ -354,6 +354,7 @@ public class PatientProvider implements IResourceProvider
                     }
 
                     trx.dsl().update(PATIENT)
+                        .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
                         .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                         .set(PATIENT.MERGED_INTO, targetId)
                         .where(PATIENT.ID.equal(sourceId))
@@ -459,6 +460,7 @@ public class PatientProvider implements IResourceProvider
             {
                 patientRecord = trx.dsl().insertInto(PATIENT)
                     .set(PATIENT.ID, resourceId)
+                    .set(PATIENT.VERSION_ID, 1)
                     .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .returningResult(PATIENT)
@@ -467,6 +469,7 @@ public class PatientProvider implements IResourceProvider
             else
             {
                 patientRecord = trx.dsl().update(PATIENT)
+                    .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
                     .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .where(PATIENT.ID.equal(resourceId))
@@ -485,7 +488,7 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    private Condition conditionFromDataParam(@Nullable DateParam param)
+    private Condition conditionFromDateParam(@Nullable DateParam param)
     {
         Condition condition;
 

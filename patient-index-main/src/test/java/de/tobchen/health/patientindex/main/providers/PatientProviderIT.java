@@ -27,7 +27,7 @@ import io.opentelemetry.api.OpenTelemetry;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 @TestInstance(Lifecycle.PER_CLASS)
-public class PatientProviderTests
+public class PatientProviderIT
 {
     private PostgreSQLContainer<?> postgres;
 
