@@ -555,9 +555,10 @@ public class PatientProvider implements IResourceProvider
 
         resource.setIdElement(new IdType("Patient", record.getId()));
 
-        var meta = new Meta();
-        meta.setLastUpdated(Date.from(record.getLastUpdated().toInstant()));
-        resource.setMeta(meta);
+        resource.setMeta(new Meta()
+            .setLastUpdated(Date.from(record.getLastUpdated().toInstant()))
+            .setVersionId(record.getVersionId().toString())
+        );
 
         var identifiers = objectMapper.readValue(record.getIdentifiers().data(), IdentifierRecord[].class);
         for (var identifier : identifiers)
