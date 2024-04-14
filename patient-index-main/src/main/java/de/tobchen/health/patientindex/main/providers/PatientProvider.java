@@ -13,6 +13,7 @@ import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Meta;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.Parameters;
+import org.hl7.fhir.r5.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r5.model.Patient;
 import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
@@ -54,6 +55,8 @@ import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import static de.tobchen.health.patientindex.main.jooq.public_.Tables.*;
 import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientRecord;
 import io.opentelemetry.api.OpenTelemetry;
@@ -292,93 +295,89 @@ public class PatientProvider implements IResourceProvider
     @Operation(name = "$merge", idempotent = false)
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
+        throws JsonProcessingException
     {
         var span = tracer.spanBuilder("PatientProvider.merge").startSpan();
 
         try (var scope = span.makeCurrent())
         {
+            var sourceIdType = sourceReference.getReferenceElement();
+            var targetIdType = targetReference.getReferenceElement();
+
+            if (sourceIdType == null || targetIdType == null)
+            {
+                throw new InvalidRequestException("Needs source and target ids");
+            }
+            else if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
+            {
+                throw new InvalidRequestException("Cannot handle absolute references");
+            }
+            else if (!"Patient".equals(sourceIdType.getResourceType())
+                || !"Patient".equals(targetIdType.getResourceType()))
+            {
+                throw new InvalidRequestException("Source and target must be Patient");
+            }
+
+            var sourceId = sourceIdType.getIdPart();
+            var targetId = targetIdType.getIdPart();
+
+            var record = dsl.transactionResult(trx -> {
+                var targetFetch = trx.dsl().select(PATIENT)
+                    .from(PATIENT)
+                    .where(PATIENT.ID.equal(targetId))
+                    .fetchAny();
+                if (targetFetch == null)
+                {
+                    throw new InvalidRequestException("Target does not exist");
+                }
+                
+                var targetRecord = targetFetch.value1();
+                if (targetRecord.getMergedInto() != null)
+                {
+                    throw new UnprocessableEntityException("Target is already merged");
+                }
+
+                var sourceFetch = trx.dsl().select(PATIENT.MERGED_INTO)
+                    .from(PATIENT)
+                    .where(PATIENT.ID.equal(sourceId))
+                    .fetchAny();
+                if (sourceFetch == null)
+                {
+                    throw new InvalidRequestException("Source does not exist");
+                }
+
+                if (sourceFetch.value1() != null)
+                {
+                    throw new UnprocessableEntityException("Source is already merged");
+                }
+
+                trx.dsl().update(PATIENT)
+                    .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
+                    .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
+                    .set(PATIENT.MERGED_INTO, targetId)
+                    .where(PATIENT.ID.equal(sourceId))
+                    .execute();
+
+                return targetRecord;
+            });
+
+            var resource = resourceFromRecord(record);
+
             var parameters = new Parameters()
-                .addParameter("source-patient", sourceReference)
-                .addParameter("target-patient", targetReference);
+                .addParameter(new ParametersParameterComponent("input")
+                    .setResource(new Parameters()
+                        .addParameter("source-patient", sourceReference)
+                        .addParameter("target-patient", targetReference)
+                    )
+                );
 
-            try
-            {
-                var sourceIdType = sourceReference.getReferenceElement();
-                var targetIdType = targetReference.getReferenceElement();
+            parameters.addParameter().setName("outcome").setResource(
+                new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
+            parameters.addParameter().setName("result").setResource(resource);
 
-                if (sourceIdType == null || targetIdType == null)
-                {
-                    throw new InvalidRequestException("Needs source and target ids");
-                }
-                else if (sourceIdType.hasBaseUrl() || targetIdType.hasBaseUrl())
-                {
-                    throw new InvalidRequestException("Cannot handle absolute references");
-                }
-                else if (!"Patient".equals(sourceIdType.getResourceType())
-                    || !"Patient".equals(targetIdType.getResourceType()))
-                {
-                    throw new InvalidRequestException("Source and target must be Patient");
-                }
-
-                var sourceId = sourceIdType.getIdPart();
-                var targetId = targetIdType.getIdPart();
-
-                var record = dsl.transactionResult(trx -> {
-                    var targetFetch = trx.dsl().select(PATIENT)
-                        .from(PATIENT)
-                        .where(PATIENT.ID.equal(targetId))
-                        .fetchAny();
-                    if (targetFetch == null)
-                    {
-                        throw new InvalidRequestException("Target does not exist");
-                    }
-                    
-                    var targetRecord = targetFetch.value1();
-                    if (targetRecord.getMergedInto() != null)
-                    {
-                        throw new InvalidRequestException("Target is already merged");
-                    }
-
-                    var sourceFetch = trx.dsl().select(PATIENT.MERGED_INTO)
-                        .from(PATIENT)
-                        .where(PATIENT.ID.equal(sourceId))
-                        .fetchAny();
-                    if (sourceFetch == null)
-                    {
-                        throw new InvalidRequestException("Source does not exist");
-                    }
-
-                    if (sourceFetch.value1() != null)
-                    {
-                        throw new InvalidRequestException("Source is already merged");
-                    }
-
-                    trx.dsl().update(PATIENT)
-                        .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
-                        .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
-                        .set(PATIENT.MERGED_INTO, targetId)
-                        .where(PATIENT.ID.equal(sourceId))
-                        .execute();
-
-                    return targetRecord;
-                });
-
-                var resource = resourceFromRecord(record);
-
-                parameters.addParameter().setName("outcome").setResource(
-                    new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.SUCCESS, IssueType.SUCCESS)));
-                parameters.addParameter().setName("result").setResource(resource);
-
-                span.setAttribute("audit.action", "merge");
-                span.setAttribute("audit.patient.soure", sourceId);
-                span.setAttribute("audit.patient.target", targetId);
-            }
-            catch (Exception e)
-            {
-                // TODO Write message
-                parameters.addParameter().setName("outcome").setResource(
-                    new OperationOutcome(new OperationOutcomeIssueComponent(IssueSeverity.ERROR, IssueType.PROCESSING)));
-            }
+            span.setAttribute("audit.action", "merge");
+            span.setAttribute("audit.patient.soure", sourceId);
+            span.setAttribute("audit.patient.target", targetId);
 
             return parameters;
         }
@@ -452,7 +451,7 @@ public class PatientProvider implements IResourceProvider
                 }
                 else
                 {
-                    throw new InvalidRequestException("Cannot update merged resource");
+                    throw new UnprocessableEntityException("Cannot update merged resource");
                 }
             }
 
