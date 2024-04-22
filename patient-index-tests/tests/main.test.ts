@@ -205,7 +205,6 @@ test.describe("create, update, and search", () => {
         expect(changedPatient.ok()).toBeTruthy();
     
         const changedPatientData = await changedPatient.json();
-        expect(changedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(changedPatientData.identifier.sort()).toEqual(identifiers.sort());
     
         const foundChangedPatient = await request.get(`Patient/${newPatientData.id}`);
@@ -213,7 +212,6 @@ test.describe("create, update, and search", () => {
     
         const foundChangedPatientData = await foundChangedPatient.json();
         expect(foundChangedPatientData.id).toBe(newPatientData.id);
-        expect(foundChangedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(foundChangedPatientData.identifier.sort()).toEqual(identifiers.sort());
     });
     
@@ -253,7 +251,6 @@ test.describe("create, update, and search", () => {
         expect(changedPatient.ok()).toBeTruthy();
     
         const changedPatientData = await changedPatient.json();
-        expect(changedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(changedPatientData.identifier.sort()).toEqual(identifiers.sort());
     
         const foundChangedPatient = await request.get(`Patient/${newPatientData.id}`);
@@ -261,7 +258,6 @@ test.describe("create, update, and search", () => {
     
         const foundChangedPatientData = await foundChangedPatient.json();
         expect(foundChangedPatientData.id).toBe(newPatientData.id);
-        expect(foundChangedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(foundChangedPatientData.identifier.sort()).toEqual(identifiers.sort());
     });
     
@@ -303,7 +299,6 @@ test.describe("create, update, and search", () => {
         expect(changedPatient.ok()).toBeTruthy();
     
         const changedPatientData = await changedPatient.json();
-        expect(changedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(changedPatientData.identifier.sort()).toEqual(identifiers.sort());
     
         const foundChangedPatient = await request.get(`Patient/${newPatientData.id}`);
@@ -311,7 +306,6 @@ test.describe("create, update, and search", () => {
     
         const foundChangedPatientData = await foundChangedPatient.json();
         expect(foundChangedPatientData.id).toBe(newPatientData.id);
-        expect(foundChangedPatientData.meta.versionId).not.toBe(newPatientData.meta.versionId);
         expect(foundChangedPatientData.identifier.sort()).toEqual(identifiers.sort());
     });
 });

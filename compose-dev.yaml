@@ -1,11 +1,23 @@
 services:
-  postgres-patient-index:
-    image: postgres:16.1-bullseye
+  postgres:
+    image: postgres:16
     ports:
-      - 127.0.0.1:5432:5432
+      - 5432:5432
     environment:
       - POSTGRES_PASSWORD=password
       - POSTGRES_USER=postgres
     volumes:
       - ./patient-index-main/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
-      - ./patient-index-feed/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-feed.sql
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+
+  jaeger:
+    image: jaegertracing/all-in-one:1
+    ports:
+      - 16686:16686
+      - 4317:4317
+      - 4318:4318

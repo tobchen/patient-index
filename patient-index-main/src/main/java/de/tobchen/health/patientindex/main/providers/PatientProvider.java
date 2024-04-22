@@ -1,7 +1,5 @@
 package de.tobchen.health.patientindex.main.providers;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -20,11 +18,8 @@ import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r5.model.Patient.LinkType;
-import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
-import org.jooq.Record1;
-import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,14 +39,8 @@ import ca.uhn.fhir.rest.annotation.Read;
 import ca.uhn.fhir.rest.annotation.RequiredParam;
 import ca.uhn.fhir.rest.annotation.ResourceParam;
 import ca.uhn.fhir.rest.annotation.Search;
-import ca.uhn.fhir.rest.annotation.Sort;
 import ca.uhn.fhir.rest.annotation.Update;
-import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.MethodOutcome;
-import ca.uhn.fhir.rest.api.SortOrderEnum;
-import ca.uhn.fhir.rest.api.SortSpec;
-import ca.uhn.fhir.rest.param.DateParam;
-import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
@@ -227,71 +216,6 @@ public class PatientProvider implements IResourceProvider
         }
     }
 
-    @Search
-    public List<Patient> searchByLastUpdated(
-        @RequiredParam(name = Constants.PARAM_LASTUPDATED) DateRangeParam dateRangeParam,
-        @Sort SortSpec sort)
-        throws JsonProcessingException
-    {
-        var span = tracer.spanBuilder("PatientProvider.searchByLastUpdated").startSpan();
-
-        try (var scope = span.makeCurrent())
-        {
-            var patients = new ArrayList<Patient>();
-            var patientIds = new ArrayList<String>();
-
-            var query = dsl.select(PATIENT)
-                .from(PATIENT)
-                .where(conditionFromDateParam(dateRangeParam.getLowerBound()))
-                .and(conditionFromDateParam(dateRangeParam.getUpperBound()));
-            
-            Result<Record1<PatientRecord>> result;
-
-            if (sort != null)
-            {
-                if (!Constants.PARAM_LASTUPDATED.equals(sort.getParamName()) || sort.getChain() != null)
-                {
-                    logger.debug("Tried to sort by {}", sort.getParamName());
-                    throw new InvalidRequestException("Can only sort by lastUpdated");
-                }
-
-                if (SortOrderEnum.DESC.equals(sort.getOrder()))
-                {
-                    result = query.orderBy(PATIENT.LAST_UPDATED.desc()).fetch();
-                }
-                else
-                {
-                    result = query.orderBy(PATIENT.LAST_UPDATED).fetch();
-                }
-            }
-            else
-            {
-                result = query.fetch();
-            }
-
-            for (var record : result)
-            {
-                var resource = resourceFromRecord(record.value1());
-                patients.add(resource);
-                patientIds.add(resource.getIdPart());
-            }
-
-            span.setAttribute("audit.action", "search");
-            span.setAttribute(AttributeKey.stringArrayKey("audit.patient"), patientIds);
-
-            return patients;
-        }
-        catch (Throwable t)
-        {
-            span.recordException(t);
-            throw t;
-        }
-        finally
-        {
-            span.end();
-        }
-    }
-
     @Operation(name = "$merge", idempotent = false)
     public Parameters merge(@OperationParam(name = "source-patient", min = 1, max = 1) Reference sourceReference,
         @OperationParam(name = "target-patient", min = 1, max = 1) Reference targetReference)
@@ -352,7 +276,6 @@ public class PatientProvider implements IResourceProvider
                 }
 
                 trx.dsl().update(PATIENT)
-                    .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
                     .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.MERGED_INTO, targetId)
                     .where(PATIENT.ID.equal(sourceId))
@@ -459,7 +382,6 @@ public class PatientProvider implements IResourceProvider
             {
                 patientRecord = trx.dsl().insertInto(PATIENT)
                     .set(PATIENT.ID, resourceId)
-                    .set(PATIENT.VERSION_ID, 1)
                     .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .returningResult(PATIENT)
@@ -468,7 +390,6 @@ public class PatientProvider implements IResourceProvider
             else
             {
                 patientRecord = trx.dsl().update(PATIENT)
-                    .set(PATIENT.VERSION_ID, PATIENT.VERSION_ID.add(1))
                     .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .where(PATIENT.ID.equal(resourceId))
@@ -487,67 +408,6 @@ public class PatientProvider implements IResourceProvider
         return outcome;
     }
 
-    private Condition conditionFromDateParam(@Nullable DateParam param)
-    {
-        Condition condition;
-
-        if (param != null)
-        {
-            var date = param.getValue();
-
-            if (date != null)
-            {
-                var dateTime = OffsetDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
-
-                var prefix = param.getPrefix();
-
-                if (prefix != null)
-                {
-                    switch (prefix)
-                    {
-                    case GREATERTHAN:
-                        condition = PATIENT.LAST_UPDATED.greaterThan(dateTime);
-                        break;
-                    case GREATERTHAN_OR_EQUALS:
-                        condition = PATIENT.LAST_UPDATED.greaterOrEqual(dateTime);
-                        break;
-                    case LESSTHAN:
-                        condition = PATIENT.LAST_UPDATED.lessThan(dateTime);
-                        break;
-                    case LESSTHAN_OR_EQUALS:
-                        condition = PATIENT.LAST_UPDATED.lessOrEqual(dateTime);
-                        break;
-                    case NOT_EQUAL:
-                        condition = PATIENT.LAST_UPDATED.equal(dateTime);
-                        break;
-                    case STARTS_AFTER:
-                    case ENDS_BEFORE:
-                        throw new InvalidRequestException("Unsupported prefix");
-                    case APPROXIMATE:
-                    case EQUAL:
-                    default:
-                        condition = PATIENT.LAST_UPDATED.equal(dateTime);
-                        break;
-                    }
-                }
-                else
-                {
-                    condition = PATIENT.LAST_UPDATED.equal(dateTime);
-                }
-            }
-            else
-            {
-                condition = DSL.trueCondition();
-            }
-        }
-        else
-        {
-            condition = DSL.trueCondition();
-        }
-
-        return condition;
-    }
-
     private Patient resourceFromRecord(PatientRecord record) throws JsonProcessingException
     {
         var resource = new Patient();
@@ -556,7 +416,6 @@ public class PatientProvider implements IResourceProvider
 
         resource.setMeta(new Meta()
             .setLastUpdated(Date.from(record.getLastUpdated().toInstant()))
-            .setVersionId(record.getVersionId().toString())
         );
 
         var identifiers = objectMapper.readValue(record.getIdentifiers().data(), IdentifierRecord[].class);
