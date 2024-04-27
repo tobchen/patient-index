@@ -14,6 +14,7 @@ import org.hl7.fhir.r5.model.Reference;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
 import org.jooq.impl.DSL;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -24,17 +25,23 @@ import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 import static de.tobchen.health.patientindex.main.jooq.public_.Tables.*;
+
+import de.tobchen.health.patientindex.main.events.ResourceChangeEvent;
 import de.tobchen.health.patientindex.main.jooq.public_.tables.records.PatientRecord;
 
 @Service
 public class PatientService
 {
+    private final ApplicationEventPublisher publisher;
+
     private final DSLContext dsl;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public PatientService(DSLContext dsl)
+    public PatientService(ApplicationEventPublisher publisher, DSLContext dsl)
     {
+        this.publisher = publisher;
+
         this.dsl = dsl;
     }
 
@@ -124,6 +131,8 @@ public class PatientService
         });
 
         var resource = resourceFromRecord(transactionResult.record());
+
+        publisher.publishEvent(new ResourceChangeEvent(resource));
 
         var outcome = new MethodOutcome(resource.getIdElement(), transactionResult.created());
         outcome.setResource(resource);
@@ -236,6 +245,8 @@ public class PatientService
         } catch (JsonProcessingException e) {
             throw new InternalErrorException("Cannot generate source resource", e);
         }
+
+        publisher.publishEvent(new ResourceChangeEvent(sourcePatient));
 
         Patient targetPatient;
         try {

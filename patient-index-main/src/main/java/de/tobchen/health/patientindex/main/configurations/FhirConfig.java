@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.parser.IParser;
 import de.tobchen.health.patientindex.main.providers.PatientProvider;
 import de.tobchen.health.patientindex.main.servlets.FhirServlet;
 
@@ -27,5 +28,11 @@ public class FhirConfig
     public ServletRegistrationBean<FhirServlet> fhirServlet(FhirContext context, PatientProvider patientProvider)
     {
         return new ServletRegistrationBean<>(new FhirServlet(context, patientProvider), "/fhir/r5/*");
+    }
+
+    @Bean
+    public IParser fhirJsonParser(FhirContext context)
+    {
+        return context.newJsonParser();
     }
 }
