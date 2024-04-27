@@ -39,7 +39,7 @@ public class ResourceChangeReporter
         var json = parser.encodeResourceToString(resource);
         logger.trace(json);
 
-        var key = "resource." + resource.getResourceType().toString();
+        var key = resource.getResourceType().toString();
         logger.debug("Key: {}", key);
 
         var message = MessageBuilder

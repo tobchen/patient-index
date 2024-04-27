@@ -10,6 +10,6 @@ public class RabbitConfig
     @Bean
     public TopicExchange topic()
     {
-        return new TopicExchange("patient-index.topic");
+        return new TopicExchange("patient-index.resource");
     }
 }

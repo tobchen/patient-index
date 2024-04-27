@@ -1,11 +1,10 @@
 package de.tobchen.health.patientindex.feed.configurations;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.parser.IParser;
 
 @Configuration
 public class FhirConfig
@@ -23,15 +22,8 @@ public class FhirConfig
     }
 
     @Bean
-    public IGenericClient fhirClient(
-        FhirContext context, @Value("${patient-index.fhir.server}") String base)
+    public IParser fhirJsonParser(FhirContext context)
     {
-        var client = context.newRestfulGenericClient(base);
-        if (client == null)
-        {
-            throw new RuntimeException("Cannot init client");
-        }
-
-        return client;
+        return context.newJsonParser();
     }
 }
