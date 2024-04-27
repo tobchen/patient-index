@@ -74,13 +74,6 @@
 			<groupId>ca.uhn.hapi.fhir</groupId>
 			<artifactId>hapi-fhir-validation-resources-r5</artifactId>
 		</dependency>
-
-		<!-- https://mvnrepository.com/artifact/org.testcontainers/postgresql -->
-		<dependency>
-			<groupId>org.testcontainers</groupId>
-			<artifactId>postgresql</artifactId>
-			<scope>test</scope>
-		</dependency>
 	</dependencies>
 
 	<dependencyManagement>
@@ -101,14 +94,6 @@
 				<version>1.37.0</version>
 				<type>pom</type>
 				<scope>import</scope>
-			</dependency>
-
-			<!-- https://mvnrepository.com/artifact/org.testcontainers/testcontainers-bom -->
-			<dependency>
-				<groupId>org.testcontainers</groupId>
-				<artifactId>testcontainers-bom</artifactId>
-				<version>1.19.7</version>
-				<type>pom</type>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
