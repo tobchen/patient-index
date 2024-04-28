@@ -1,10 +1,13 @@
 package de.tobchen.health.patientindex.main.components;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.core.MessagePropertiesBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.context.event.EventListener;
@@ -42,8 +45,16 @@ public class ResourceChangeReporter
         var key = resource.getResourceType().toString();
         logger.debug("Key: {}", key);
 
+        var messageProperties = MessagePropertiesBuilder
+            .newInstance()
+            .setContentType("application/fhir+json")
+            .setMessageId(UUID.randomUUID().toString())
+            .setTimestamp(new Date())
+            .build();
+
         var message = MessageBuilder
             .withBody(json.getBytes(StandardCharsets.UTF_8))
+            .andProperties(messageProperties)
             .build();
 
         template.send(topic.getName(), key, message);

@@ -3,15 +3,7 @@ logging:
     org.jooq.tools.LoggerListener: debug
     de.tobchen: trace
 
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: password
-
 patient-index:
-  fhir:
-    server: http://localhost:8080/fhir/r5
   pid-oid: 0.0.0
   feed:
     sender:
