@@ -13,7 +13,6 @@ import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.hl7.fhir.r5.model.Reference;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
-import org.jooq.impl.DSL;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -112,7 +111,6 @@ public class PatientService
             {
                 patientRecord = trx.dsl().insertInto(PATIENT)
                     .set(PATIENT.ID, resourceIdPart)
-                    .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .returningResult(PATIENT)
                     .fetchAny().value1();
@@ -120,7 +118,6 @@ public class PatientService
             else
             {
                 patientRecord = trx.dsl().update(PATIENT)
-                    .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                     .set(PATIENT.IDENTIFIERS, JSONB.jsonb(identifierJson))
                     .where(PATIENT.ID.equal(resourceIdPart))
                     .returningResult(PATIENT)
@@ -230,7 +227,6 @@ public class PatientService
             }
 
             var sourceRecord = trx.dsl().update(PATIENT)
-                .set(PATIENT.LAST_UPDATED, DSL.currentOffsetDateTime())
                 .set(PATIENT.MERGED_INTO, targetIdPart)
                 .where(PATIENT.ID.equal(sourceIdPart))
                 .returningResult(PATIENT)
