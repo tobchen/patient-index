@@ -25,13 +25,13 @@ public class IntegrationConfig
         var serializer = new MllpSerializer();
 
         return IntegrationFlow
-            .from(Amqp.inboundGateway(connectionFactory, queue))
+            .from(Amqp.inboundAdapter(connectionFactory, queue))
             .transform(transformer)
             .handle(Tcp.outboundGateway(Tcp.netClient(host, port)
                 .deserializer(serializer)
                 .serializer(serializer)
                 .connectTimeout(15)
                 .soTimeout(10000)))
-            .get();
+            .nullChannel();
     }
 }

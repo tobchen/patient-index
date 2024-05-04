@@ -1,6 +1,7 @@
 logging:
   level:
     org.jooq.tools.LoggerListener: debug
+    org.springframework.integration: trace
     de.tobchen: trace
 
 patient-index:

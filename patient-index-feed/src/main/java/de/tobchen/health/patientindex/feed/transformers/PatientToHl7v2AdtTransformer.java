@@ -78,8 +78,8 @@ public class PatientToHl7v2AdtTransformer
         }
 
         var payload = encodedHl7Message.getBytes(StandardCharsets.UTF_8);
-        
-        return MessageBuilder.withPayload(payload).build();
+
+        return MessageBuilder.createMessage(payload, source.getHeaders());
     }
 
     private Extracted extract(org.springframework.messaging.Message<byte[]> message)
