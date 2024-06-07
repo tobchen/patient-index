@@ -1,18 +1,15 @@
 package de.tobchen.health.patientindex.feed.transformers;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 import org.hl7.fhir.r5.model.Patient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.integration.core.GenericTransformer;
+import org.springframework.integration.transformer.AbstractTransformer;
 import org.springframework.lang.Nullable;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 
-import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.DataTypeException;
 import ca.uhn.hl7v2.model.Message;
@@ -22,17 +19,11 @@ import ca.uhn.hl7v2.model.v231.message.ADT_A39;
 import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
-import ca.uhn.hl7v2.parser.Parser;
 
 @Service
-public class PatientToHl7v2AdtTransformer
-    implements GenericTransformer<org.springframework.messaging.Message<byte[]>,
-    org.springframework.messaging.Message<byte[]>>
+public class PatientToHl7v2AdtTransformer extends AbstractTransformer
 {
     private final Logger logger = LoggerFactory.getLogger(PatientToHl7v2AdtTransformer.class);
-
-    private final FhirContext fhirContext;
-    private final Parser hl7v2Parser;
 
     private final String pidOid;
     private final String sendingAppOid;
@@ -41,16 +32,12 @@ public class PatientToHl7v2AdtTransformer
     private final String receivingFacOid;
 
     public PatientToHl7v2AdtTransformer(
-        FhirContext fhirContext, Parser hl7v2Parser,
         @Value("${patient-index.pid-oid}") String pidOid,
         @Value("${patient-index.feed.sender.application-oid}") String sendingAppOid,
         @Value("${patient-index.feed.sender.facility-oid}") String sendingFacOid,
         @Value("${patient-index.feed.receiver.application-oid}") String receivingAppOid,
         @Value("${patient-index.feed.receiver.facility-oid}") String receivingFacOid)
     {
-        this.fhirContext = fhirContext;
-        this.hl7v2Parser = hl7v2Parser;
-
         this.pidOid = pidOid;
         this.sendingAppOid = sendingAppOid;
         this.sendingFacOid = sendingFacOid;
@@ -59,33 +46,11 @@ public class PatientToHl7v2AdtTransformer
     }
 
     @Override
-    public org.springframework.messaging.Message<byte[]> transform(
-        org.springframework.messaging.Message<byte[]> source)
-    {
-        logger.debug("Transforming message with headers {}", source.getHeaders());
-
-        var extracted = extract(source);
-
-        var hl7Message = createHl7(extracted.msgId(), extracted.msgDt,
-            extracted.eventDt(), extracted.pid(), extracted.mrgId());
-        
-        String encodedHl7Message;
-        try {
-            encodedHl7Message = hl7v2Parser.encode(hl7Message);
-        } catch (HL7Exception e) {
-            logger.error("Cannot encode HL7 message", e);
-            throw new RuntimeException(e);
-        }
-
-        var payload = encodedHl7Message.getBytes(StandardCharsets.UTF_8);
-
-        return MessageBuilder.withPayload(payload).copyHeaders(source.getHeaders()).build();
-    }
-
-    private Extracted extract(org.springframework.messaging.Message<byte[]> message)
-    {
+    protected Object doTransform(org.springframework.messaging.Message<?> message) {
         var headers = message.getHeaders();
-        
+
+        logger.debug("Transforming message with headers {}", headers);
+
         var msgId = headers.get("amqp_messageId", String.class);
         if (msgId == null)
         {
@@ -98,9 +63,8 @@ public class PatientToHl7v2AdtTransformer
             msgDt = new Date(headers.getTimestamp());
         }
 
-        var patient = fhirContext.newJsonParser().parseResource(Patient.class,
-            new String(message.getPayload(), StandardCharsets.UTF_8));
-        
+        var patient = (Patient) message.getPayload();
+
         var eventDt = patient.getMeta().getLastUpdated();
         if (eventDt == null)
         {
@@ -111,7 +75,7 @@ public class PatientToHl7v2AdtTransformer
 
         // TODO Get mrgId
 
-        return new Extracted(msgId, msgDt, eventDt, pid, null);
+        return createHl7(msgId, msgDt, eventDt, pid, null);
     }
 
     private @Nullable Message createHl7(String msgId, Date msgDt, Date eventDt, String pid, String mrgId)
@@ -218,6 +182,4 @@ public class PatientToHl7v2AdtTransformer
             pidAa.getUniversalIDType().setValue("ISO");
         }
     }
-
-    private record Extracted(String msgId, Date msgDt, Date eventDt, String pid, String mrgId) { }
 }
