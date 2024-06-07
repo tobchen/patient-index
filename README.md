@@ -50,14 +50,19 @@ The following properties are required and have no defaults:
 
 |Property|Description|Example|
 |---|---|---|
-|`patient-index.fhir.server`|The FHIR base url to poll for patient resources|`http://localhost:8080/fhir/r5`|
-|`patient-index.pid-oid`|The OID to be set in `PID-3` or `MRG-1`|`0.0.0`|
-|`patient-index.feed.sender.application-oid`|The OID to be set in `MSH-3`|`1.2.3`|
-|`patient-index.feed.sender.facility-oid`|The OID to be set in `MSH-4`|`4.5.6`|
-|`patient-index.feed.receiver.application-oid`|The OID to be set in `MSH-5`|`7.8.9`|
-|`patient-index.feed.receiver.facility-oid`|The OID to be set in `MSH-6`|`10.11.12`|
+|`patient-index.pid.namespace`|The namespace to be set in `PID-3` or `MRG-1`|`pid`|
+|`patient-index.pid.oid`|The OID to be set in `PID-3` or `MRG-1`|`0.0.0`|
+|`patient-index.feed.sender.application.namespace`|The namespace to be set in `MSH-3`|`app-s`|
+|`patient-index.feed.sender.application.oid`|The OID to be set in `MSH-3`|`1.2.3`|
+|`patient-index.feed.sender.facility.namespace`|The namespace to be set in `MSH-4`|`fac-s`|
+|`patient-index.feed.sender.facility.oid`|The OID to be set in `MSH-4`|`4.5.6`|
+|`patient-index.feed.receiver.application.namespace`|The namespace to be set in `MSH-5`|`app-r`|
+|`patient-index.feed.receiver.application.oid`|The OID to be set in `MSH-5`|`7.8.9`|
+|`patient-index.feed.receiver.facility.namespace`|The OID to be set in `MSH-6`|`fac-r`|
+|`patient-index.feed.receiver.facility.oid`|The OID to be set in `MSH-6`|`10.11.12`|
 |`patient-index.feed.receiver.host`|The message receiver hostname|`localhost`|
 |`patient-index.feed.receiver.port`|The message receiver port|`6060`|
+|`patient-index.feed.processing-mode`|The processing mode to be set in `MSH-11`|`P`|
 
 ### Patient Index Web Service
 

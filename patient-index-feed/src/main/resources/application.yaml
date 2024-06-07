@@ -3,15 +3,3 @@ logging:
     org.jooq.tools.LoggerListener: debug
     org.springframework.integration: trace
     de.tobchen: trace
-
-patient-index:
-  pid-oid: 0.0.0
-  feed:
-    sender:
-      application-oid: 1.2.3
-      facility-oid: 4.5.6
-    receiver:
-      application-oid: 7.8.9
-      facility-oid: 10.11.12
-      host: localhost
-      port: 6060

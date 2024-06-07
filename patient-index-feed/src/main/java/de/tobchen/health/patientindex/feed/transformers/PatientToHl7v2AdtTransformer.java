@@ -5,10 +5,8 @@ import java.util.Date;
 import org.hl7.fhir.r5.model.Patient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.integration.transformer.AbstractTransformer;
 import org.springframework.lang.Nullable;
-import org.springframework.stereotype.Service;
 
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.DataTypeException;
@@ -19,30 +17,17 @@ import ca.uhn.hl7v2.model.v231.message.ADT_A39;
 import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
+import de.tobchen.health.patientindex.configurations.PatientIndexConfig;
 
-@Service
 public class PatientToHl7v2AdtTransformer extends AbstractTransformer
 {
     private final Logger logger = LoggerFactory.getLogger(PatientToHl7v2AdtTransformer.class);
 
-    private final String pidOid;
-    private final String sendingAppOid;
-    private final String sendingFacOid;
-    private final String receivingAppOid;
-    private final String receivingFacOid;
+    private final PatientIndexConfig config;
 
-    public PatientToHl7v2AdtTransformer(
-        @Value("${patient-index.pid-oid}") String pidOid,
-        @Value("${patient-index.feed.sender.application-oid}") String sendingAppOid,
-        @Value("${patient-index.feed.sender.facility-oid}") String sendingFacOid,
-        @Value("${patient-index.feed.receiver.application-oid}") String receivingAppOid,
-        @Value("${patient-index.feed.receiver.facility-oid}") String receivingFacOid)
+    public PatientToHl7v2AdtTransformer(PatientIndexConfig config)
     {
-        this.pidOid = pidOid;
-        this.sendingAppOid = sendingAppOid;
-        this.sendingFacOid = sendingFacOid;
-        this.receivingAppOid = receivingAppOid;
-        this.receivingFacOid = receivingFacOid;
+        this.config = config;
     }
 
     @Override
@@ -124,16 +109,20 @@ public class PatientToHl7v2AdtTransformer extends AbstractTransformer
             msh.getEncodingCharacters().setValue("^~\\&");
 
             var sendingApp = msh.getSendingApplication();
-            sendingApp.getUniversalID().setValue(sendingAppOid);
+            sendingApp.getNamespaceID().setValue(config.feed().sender().application().namespace());
+            sendingApp.getUniversalID().setValue(config.feed().sender().application().oid());
             sendingApp.getUniversalIDType().setValue("ISO");
             var sendingFac = msh.getSendingFacility();
-            sendingFac.getUniversalID().setValue(sendingFacOid);
+            sendingFac.getNamespaceID().setValue(config.feed().sender().facility().namespace());
+            sendingFac.getUniversalID().setValue(config.feed().sender().facility().oid());
             sendingFac.getUniversalIDType().setValue("ISO");
             var receivingApp = msh.getReceivingApplication();
-            receivingApp.getUniversalID().setValue(receivingAppOid);
+            receivingApp.getNamespaceID().setValue(config.feed().receiver().application().namespace());
+            receivingApp.getUniversalID().setValue(config.feed().receiver().application().oid());
             receivingApp.getUniversalIDType().setValue("ISO");
             var receivingFac = msh.getReceivingFacility();
-            receivingFac.getUniversalID().setValue(receivingFacOid);
+            receivingFac.getNamespaceID().setValue(config.feed().receiver().facility().namespace());
+            receivingFac.getUniversalID().setValue(config.feed().receiver().facility().oid());
             receivingFac.getUniversalIDType().setValue("ISO");
 
             msh.getDateTimeOfMessage().getTimeOfAnEvent().setValue(new Date());
@@ -144,8 +133,7 @@ public class PatientToHl7v2AdtTransformer extends AbstractTransformer
 
             msh.getMessageControlID().setValue(messageId.toString());
 
-            // TODO Get processing id from settings
-            msh.getProcessingID().getProcessingID().setValue("P");
+            msh.getProcessingID().getProcessingID().setValue(config.feed().processingMode());
 
             msh.getVersionID().getVersionID().setValue(msh.getMessage().getVersion());
 
@@ -178,7 +166,8 @@ public class PatientToHl7v2AdtTransformer extends AbstractTransformer
         {
             pidCx.getID().setValue(patientId);
             var pidAa = pidCx.getAssigningAuthority();
-            pidAa.getUniversalID().setValue(pidOid);
+            pidAa.getNamespaceID().setValue(config.pid().namespace());
+            pidAa.getUniversalID().setValue(config.pid().oid());
             pidAa.getUniversalIDType().setValue("ISO");
         }
     }
