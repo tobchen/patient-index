@@ -23,15 +23,15 @@ public class MllpSerializer implements Serializer<byte[]>, Deserializer<byte[]>
     {
         var result = new ByteArrayOutputStream();
 
-        var state = DeserializerState.BEFORE_ANYTHING;
+        var readSB = false;
+        var readEB = false;
 
-        while (state != DeserializerState.AFTER_EVERYTHING)
+        while (true)
         {
             var i = inputStream.read();
 
-            switch (state)
+            if (!readSB)
             {
-            case BEFORE_ANYTHING:
                 if (i < 0)
                 {
                     logger.debug("Stream closed before start block character");
@@ -39,48 +39,45 @@ public class MllpSerializer implements Serializer<byte[]>, Deserializer<byte[]>
                 }
                 else if (i == START_BLOCK_CHAR)
                 {
-                    state = DeserializerState.AFTER_START_BLOCK_CHAR;
+                    logger.debug("Read start block character");
+                    readSB = true;
                 }
                 else
                 {
                     logger.debug("Missing start block character");
                     throw new IOException("Missing start block character");
                 }
-                break;
-            case AFTER_START_BLOCK_CHAR:
-                if (i < 0)
+            }
+            else if (readEB)
+            {
+                if (i == CARRIAGE_RETURN)
                 {
-                    logger.debug("Stream closed before end block character");
-                    throw new IOException("Stream closed before end block character");
-                }
-                else if (i == END_BLOCK_CHAR)
-                {
-                    state = DeserializerState.AFTER_END_BLOCK_CHAR;
+                    logger.debug("Read carriage return after end block character");
+                    break;
                 }
                 else
                 {
-                    result.write(i);
-                }             
-                break;
-            case AFTER_END_BLOCK_CHAR:
-                if (i < 0)
-                {
-                    logger.debug("Stream closed before carriage return");
-                    throw new IOException("Stream closed before carriage return");
-                }
-                else if (i == CARRIAGE_RETURN)
-                {
-                    state = DeserializerState.AFTER_EVERYTHING;
-                }
-                else
-                {
+                    logger.debug("Did not read carriage return after end block character");
                     result.write(END_BLOCK_CHAR);
-                    result.write(i);
+                    if (i == END_BLOCK_CHAR)
+                    {
+                        logger.debug("Read end block character");
+                    }
+                    else
+                    {
+                        result.write(i);
+                        readEB = false;
+                    }
                 }
-                break;
-            case AFTER_EVERYTHING:
-                logger.debug("Somehow landed in AFTER_EVERYTHING block");
-                break;
+            }
+            else if (i == END_BLOCK_CHAR)
+            {
+                logger.debug("Read end block character");
+                readEB = true;
+            }
+            else
+            {
+                result.write(i);
             }
         }
 
@@ -94,13 +91,5 @@ public class MllpSerializer implements Serializer<byte[]>, Deserializer<byte[]>
         outputStream.write(object);
         outputStream.write(END_BLOCK_CHAR);
         outputStream.write(CARRIAGE_RETURN);
-    }
-    
-    private enum DeserializerState
-    {
-        BEFORE_ANYTHING,
-        AFTER_START_BLOCK_CHAR,
-        AFTER_END_BLOCK_CHAR,
-        AFTER_EVERYTHING
     }
 }
