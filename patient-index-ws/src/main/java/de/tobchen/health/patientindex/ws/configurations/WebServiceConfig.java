@@ -1,4 +1,4 @@
-package de.tobchen.health.patientindex.ws.configs;
+package de.tobchen.health.patientindex.ws.configurations;
 
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.ApplicationContext;

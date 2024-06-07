@@ -3,6 +3,9 @@ package de.tobchen.health.patientindex.ws.services;
 import java.util.ArrayList;
 import java.util.Collection;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.Patient;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,10 +41,13 @@ public class QueryService
             new TextMapSetter<IClientExecutable<?, ?>>()
         {
             @Override
-            public void set(IClientExecutable<?, ?> carrier,
-                String key, String value)
+            public void set(@Nullable IClientExecutable<?, ?> carrier,
+                @Nonnull String key, @Nonnull String value)
             {
-                carrier.withAdditionalHeader(key, value);
+                if (carrier != null)
+                {
+                    carrier.withAdditionalHeader(key, value);
+                }
             }  
         };
         
