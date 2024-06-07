@@ -12,7 +12,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 
-import ca.uhn.fhir.parser.IParser;
+import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.DataTypeException;
 import ca.uhn.hl7v2.model.Message;
@@ -31,7 +31,7 @@ public class PatientToHl7v2AdtTransformer
 {
     private final Logger logger = LoggerFactory.getLogger(PatientToHl7v2AdtTransformer.class);
 
-    private final IParser fhirParser;
+    private final FhirContext fhirContext;
     private final Parser hl7v2Parser;
 
     private final String pidOid;
@@ -41,14 +41,14 @@ public class PatientToHl7v2AdtTransformer
     private final String receivingFacOid;
 
     public PatientToHl7v2AdtTransformer(
-        IParser fhirParser, Parser hl7v2Parser,
+        FhirContext fhirContext, Parser hl7v2Parser,
         @Value("${patient-index.pid-oid}") String pidOid,
         @Value("${patient-index.feed.sender.application-oid}") String sendingAppOid,
         @Value("${patient-index.feed.sender.facility-oid}") String sendingFacOid,
         @Value("${patient-index.feed.receiver.application-oid}") String receivingAppOid,
         @Value("${patient-index.feed.receiver.facility-oid}") String receivingFacOid)
     {
-        this.fhirParser = fhirParser;
+        this.fhirContext = fhirContext;
         this.hl7v2Parser = hl7v2Parser;
 
         this.pidOid = pidOid;
@@ -98,7 +98,7 @@ public class PatientToHl7v2AdtTransformer
             msgDt = new Date(headers.getTimestamp());
         }
 
-        var patient = fhirParser.parseResource(Patient.class,
+        var patient = fhirContext.newJsonParser().parseResource(Patient.class,
             new String(message.getPayload(), StandardCharsets.UTF_8));
         
         var eventDt = patient.getMeta().getLastUpdated();

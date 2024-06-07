@@ -13,7 +13,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import ca.uhn.fhir.parser.IParser;
+import ca.uhn.fhir.context.FhirContext;
 import de.tobchen.health.patientindex.main.events.ResourceChangeEvent;
 
 @Component
@@ -24,14 +24,14 @@ public class ResourceChangeReporter
     private final RabbitTemplate template;
     private final TopicExchange topic;
 
-    private final IParser parser;
+    private final FhirContext context;
 
-    public ResourceChangeReporter(RabbitTemplate template, TopicExchange topic, IParser parser)
+    public ResourceChangeReporter(RabbitTemplate template, TopicExchange topic, FhirContext context)
     {
         this.template = template;
         this.topic = topic;
 
-        this.parser = parser;
+        this.context = context;
     }
 
     @EventListener
@@ -39,7 +39,7 @@ public class ResourceChangeReporter
     {
         var resource = event.resource();
 
-        var json = parser.encodeResourceToString(resource);
+        var json = context.newJsonParser().encodeResourceToString(resource);
         logger.trace(json);
 
         var key = resource.getResourceType().toString();
