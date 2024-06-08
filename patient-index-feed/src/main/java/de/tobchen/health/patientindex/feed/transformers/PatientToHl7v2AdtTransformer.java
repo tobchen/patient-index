@@ -17,7 +17,7 @@ import ca.uhn.hl7v2.model.v231.message.ADT_A39;
 import ca.uhn.hl7v2.model.v231.segment.EVN;
 import ca.uhn.hl7v2.model.v231.segment.MSH;
 import ca.uhn.hl7v2.model.v231.segment.PID;
-import de.tobchen.health.patientindex.configurations.PatientIndexConfig;
+import de.tobchen.health.patientindex.commons.configurations.PatientIndexConfig;
 
 public class PatientToHl7v2AdtTransformer extends AbstractTransformer
 {

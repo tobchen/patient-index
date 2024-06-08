@@ -62,7 +62,11 @@ The following properties are required and have no defaults:
 |`patient-index.feed.receiver.facility.oid`|The OID to be set in `MSH-6`|`10.11.12`|
 |`patient-index.feed.receiver.host`|The message receiver hostname|`localhost`|
 |`patient-index.feed.receiver.port`|The message receiver port|`6060`|
-|`patient-index.feed.processing-mode`|The processing mode to be set in `MSH-11`|`P`|
+|`patient-index.feed.processing-mode`|The processing mode to be set in `MSH-11`, defaults to `T`|`P`|
+
+#### Development
+
+This component depends on `patient-index-commons`.
 
 ### Patient Index Web Service
 

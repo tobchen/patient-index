@@ -10,6 +10,7 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>patient-index-commons</module>
         <module>patient-index-main</module>
         <module>patient-index-feed</module>
         <module>patient-index-ws</module>

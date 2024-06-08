@@ -11,7 +11,7 @@ import org.springframework.integration.ip.dsl.Tcp;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.hl7v2.parser.Parser;
-import de.tobchen.health.patientindex.configurations.PatientIndexConfig;
+import de.tobchen.health.patientindex.commons.configurations.PatientIndexConfig;
 import de.tobchen.health.patientindex.feed.serializers.MllpSerializer;
 import de.tobchen.health.patientindex.feed.transformers.BytesToPatientTransformer;
 import de.tobchen.health.patientindex.feed.transformers.Hl7v2ToBytesTransformer;
@@ -27,6 +27,9 @@ public class IntegrationConfig
         ConnectionFactory connectionFactory, Queue queue,
         PatientIndexConfig config)
     {
+        var host = config.feed().receiver().host();
+        var port = config.feed().receiver().port();
+
         var serializer = new MllpSerializer();
 
         return IntegrationFlow
@@ -35,7 +38,7 @@ public class IntegrationConfig
             .transform(new PatientToHl7v2AdtTransformer(config))
             .transform(new Hl7v2ToBytesTransformer(hl7Parser))
             .handle(Tcp.outboundGateway(Tcp.netClient(
-                    config.feed().receiver().host(), config.feed().receiver().port())
+                    host, port)
                 .deserializer(serializer)
                 .serializer(serializer)
                 .connectTimeout(15)
