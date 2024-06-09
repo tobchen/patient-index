@@ -1,7 +1,9 @@
 package de.tobchen.health.patientindex.ws.services;
 
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -14,7 +16,6 @@ import org.springframework.stereotype.Service;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.gclient.IClientExecutable;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
-import de.tobchen.health.patientindex.ws.model.schemas.II;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
@@ -37,9 +38,7 @@ public class QueryService
     {
         this.tracer = openTelemetry.getTracer(QueryService.class.getName());
         this.propagator = openTelemetry.getPropagators().getTextMapPropagator();
-        this.otelSetter =
-            new TextMapSetter<IClientExecutable<?, ?>>()
-        {
+        this.otelSetter = new TextMapSetter<IClientExecutable<?, ?>>() {
             @Override
             public void set(@Nullable IClientExecutable<?, ?> carrier,
                 @Nonnull String key, @Nonnull String value)
@@ -56,59 +55,55 @@ public class QueryService
         this.pidOid = pidOid;
     }
 
-    public Collection<II> findOtherIdentifiers(II queriedIi)
+    public Map<String, Set<String>> findIdentifiers(String system, String value)
     {
         var span = tracer.spanBuilder("QueryService.findOtherIdentifiers").startSpan();
-
         try (var scope = span.makeCurrent())
         {
-            var result = new ArrayList<II>();
+            var systemValuesMap = new HashMap<String, Set<String>>();
 
-            String queriedRoot = queriedIi.getRoot();
-            String queriedExtension = queriedIi.getExtension();
-            if (queriedRoot != null && queriedExtension != null)
+            if (system.equals(pidOid))
             {
-                if (queriedRoot.equals(pidOid))
+                var executable = client
+                    .read()
+                    .resource(Patient.class)
+                    .withId(value);
+
+                propagator.inject(Context.current(), executable, otelSetter);
+
+                var patient = executable.execute();
+
+                if (patient != null)
                 {
-                    var executable = client.read().resource(Patient.class).withId(queriedExtension);
-
-                    propagator.inject(Context.current(), executable, otelSetter);
-                    
-                    var patient = executable.execute();
-
-                    addIdentifiers(result, patient, queriedRoot, queriedExtension);
+                    populate(systemValuesMap, patient);
                 }
-                else
+            }
+            else
+            {
+                var query = client
+                    .search()
+                    .forResource(Patient.class)
+                    .where(new TokenClientParam(Patient.SP_IDENTIFIER)
+                        .exactly()
+                        .systemAndIdentifier(system, value)
+                    )
+                    .returnBundle(Bundle.class);
+                
+                propagator.inject(Context.current(), query, otelSetter);
+
+                var bundle = query.execute();
+
+                for (var entry : bundle.getEntry())
                 {
-                    var query = client.search()
-                        .forResource(Patient.class)
-                        .where(new TokenClientParam(Patient.SP_IDENTIFIER)
-                            .exactly()
-                            .systemAndIdentifier("urn:oid:" + queriedRoot, queriedExtension))
-                        .returnBundle(Bundle.class);
-                    
-                    propagator.inject(Context.current(), query, otelSetter);
-
-                    var bundle = query.execute();
-
-                    var entries = bundle.getEntry();
-                    if (entries != null)
+                    var resource = entry.getResource();
+                    if (resource instanceof Patient)
                     {
-                        for (var entry : entries)
-                        {
-                            var resource = entry.getResource();
-                            if (resource instanceof Patient)
-                            {
-                                var patient = (Patient) resource;
-
-                                addIdentifiers(result, patient, queriedRoot, queriedExtension);
-                            }
-                        }
+                        populate(systemValuesMap, (Patient) resource);
                     }
                 }
             }
 
-            return result;
+            return systemValuesMap;
         }
         finally
         {
@@ -116,39 +111,32 @@ public class QueryService
         }
     }
 
-    private void addIdentifiers(Collection<II> identifiers, Patient patient,
-        String exceptSystem, String exceptValue)
+    private void populate(Map<String, Set<String>> systemValuesMap, Patient patient)
     {
-        var id = patient.getIdPart();
-        if (!exceptSystem.equals(pidOid) || exceptValue.equals(id))
-        {
-            identifiers.add(createIi(pidOid, id));
-        }
+        // TODO Do not populate if patient is inactive
 
-        var patientIdentifiers = patient.getIdentifier();
-        if (patientIdentifiers != null)
+        populate(systemValuesMap, pidOid, patient.getIdPart());
+
+        for (var identifier : patient.getIdentifier())
         {
-            for (var identifier : patientIdentifiers)
+            var system = identifier.getSystem();
+            var value = identifier.getValue();
+            if (system != null && system.startsWith("urn:oid:") && value != null)
             {
-                var system = identifier.getSystem();
-                var value = identifier.getValue();
-                if (system != null && system.startsWith("urn:oid:") && value != null)
-                {
-                    var systemOid = system.substring(8);
-                    if (!exceptSystem.equals(systemOid) || !exceptValue.equals(value))
-                    {
-                        identifiers.add(createIi(systemOid, value));
-                    }
-                }
+                populate(systemValuesMap, system.substring(8), value);
             }
         }
     }
 
-    private static II createIi(String root, String extension)
+    private void populate(Map<String, Set<String>> systemValuesMap, String system, String value)
     {
-        var ii = new II();
-        ii.setRoot(root);
-        ii.setExtension(extension);
-        return ii;
+        var set = systemValuesMap.get(system);
+        if (set == null)
+        {
+            set = new HashSet<>();
+            systemValuesMap.put(system, set);
+        }
+
+        set.add(value);
     }
 }
