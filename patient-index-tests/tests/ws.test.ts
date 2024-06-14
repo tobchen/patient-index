@@ -2,13 +2,12 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'crypto';
 import { create } from 'xmlbuilder2';
 import { Patient } from './patient';
-import { select } from 'xpath';
 
 const nsSoap = "http://www.w3.org/2003/05/soap-envelope";
 const nsHl73 = "urn:hl7-org:v3";
 
-const receiverOid = "1.2.3"
-const senderOid = "4.5.6"
+const receiverOid = "1.2.3";
+const senderOid = "4.5.6";
 
 function hl7FormatDate(date: Date)
 {
@@ -82,8 +81,37 @@ function randomOid()
     return path.join(".");
 }
 
+function findNodes(node: Node, path: Array<string>): Array<Node>
+{
+    const result = new Array<Node>();
+
+    if (path.length > 0 && node.nodeType == node.ELEMENT_NODE)
+    {
+        const complexNodeName = node.nodeName.split(":", 2);
+        const nodeName = complexNodeName.length == 1 ? complexNodeName[0] : complexNodeName[1];
+
+        if (path[0] == nodeName)
+        {
+            if (path.length == 1)
+            {
+                result.push(node);
+            }
+            else
+            {
+                const pathNext = path.slice(1);
+
+                for (const child of node.childNodes)
+                {
+                    result.push(...findNodes(child, pathNext));
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 const resourceOid = "0.0.0";
-const unknownOid = randomOid();
 
 const patient: Patient = {
     resourceType: "Patient",
@@ -107,12 +135,190 @@ test.beforeAll(async ({ request }) => {
 });
 
 test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3.45.4.2.3 )", () => {
-    test("case 1 (with resource id, no data source)", async ({ request }) => {
+    test.describe("Case 1", () => {
+        test("with resource id", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(resourceOid, patient.id!, [ patient.identifier![0].system.substring(8) ]).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("OK");
+
+            const foundIds = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/subject/registrationEvent/subject1/patient/id"
+                    .split("/"));
+            expect(foundIds.length).toBe(1);
+    
+            //console.log(doc.end({ prettyPrint: true }));
+        });
+    
+        test("with patient identifier", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value,
+                    [ patient.identifier![1].system.substring(8) ]).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("OK");
+
+            const foundIds = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/subject/registrationEvent/subject1/patient/id"
+                    .split("/"));
+            expect(foundIds.length).toBe(1);
+    
+            //console.log(doc.end({ prettyPrint: true }));
+        });
+    });
+
+    test.describe("Case 2", () => {
+        test("with resource id", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(resourceOid, patient.id!, []).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+    
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("OK");
+
+            const foundIds = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/subject/registrationEvent/subject1/patient/id"
+                    .split("/"));
+            expect(foundIds.length).toBe(2);
+    
+            // console.log(doc.end({ prettyPrint: true }));
+        });
+
+        test("with patient identifier", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value, []).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("OK");
+
+            const foundIds = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/subject/registrationEvent/subject1/patient/id"
+                    .split("/"));
+            expect(foundIds.length).toBe(2);
+    
+            //console.log(doc.end({ prettyPrint: true }));
+        });
+    });
+
+    test.describe("Case 3", () => {
+        test("with resource id", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(resourceOid, patient.id!, [ randomOid() ]).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("NF");
+    
+            //console.log(doc.end({ prettyPrint: true }));
+        });
+    
+        test("with patient identifier", async ({ request }) => {
+            const response = await request.post("http://localhost:9080/ws/", {
+                headers: {
+                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                },
+                data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value,
+                    [ randomOid() ]).end()
+            })
+    
+            expect(response.ok()).toBeTruthy();
+    
+            const doc = create((await response.body()).toString("utf-8"));
+            const root = doc.root().node as unknown as Node;
+
+            const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+            expect(ackTypeCode.length).toBe(1);
+            expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AA");
+    
+            const responseCode = findNodes(root,
+                "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+            expect(responseCode.length).toBe(1);
+            expect((responseCode[0] as Element).getAttribute("code")).toBe("NF");
+    
+            //console.log(doc.end({ prettyPrint: true }));
+        });
+    });
+
+    test("Case 4", async ({ request }) => {
         const response = await request.post("http://localhost:9080/ws/", {
             headers: {
                 "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
             },
-            data: createSoapMsg(resourceOid, patient.id!, []).end()
+            data: createSoapMsg(resourceOid, randomUUID(), []).end()
         })
 
         expect(response.ok()).toBeTruthy();
@@ -120,9 +326,40 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         const doc = create((await response.body()).toString("utf-8"));
         const root = doc.root().node as unknown as Node;
 
-        // const ackTypeCode = select("/Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode/@code", root, true);
-        // expect(ackTypeCode).toBe("AA");
+        const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+        expect(ackTypeCode.length).toBe(1);
+        expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AE");
 
-        // console.log(doc.end({ prettyPrint: true }));
+        const responseCode = findNodes(root,
+            "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+        expect(responseCode.length).toBe(1);
+        expect((responseCode[0] as Element).getAttribute("code")).toBe("AE");
+
+        //console.log(doc.end({ prettyPrint: true }));
+    });
+
+    test("Case 5", async ({ request }) => {
+        const response = await request.post("http://localhost:9080/ws/", {
+            headers: {
+                "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+            },
+            data: createSoapMsg(randomOid(), randomUUID(), []).end()
+        })
+
+        expect(response.ok()).toBeTruthy();
+
+        const doc = create((await response.body()).toString("utf-8"));
+        const root = doc.root().node as unknown as Node;
+
+        const ackTypeCode = findNodes(root, "Envelope/Body/PRPA_IN201310UV02/acknowledgement/typeCode".split("/"));
+        expect(ackTypeCode.length).toBe(1);
+        expect((ackTypeCode[0] as Element).getAttribute("code")).toBe("AE");
+
+        const responseCode = findNodes(root,
+            "Envelope/Body/PRPA_IN201310UV02/controlActProcess/queryAck/queryResponseCode".split("/"));
+        expect(responseCode.length).toBe(1);
+        expect((responseCode[0] as Element).getAttribute("code")).toBe("AE");
+
+        //console.log(doc.end({ prettyPrint: true }));
     });
 });
