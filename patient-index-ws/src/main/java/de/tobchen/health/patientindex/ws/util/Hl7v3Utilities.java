@@ -78,10 +78,9 @@ public abstract class Hl7v3Utilities
         return ts;
     }
 
-    public static CS createCs(String codeSystem, String code)
+    public static CS createCs(String code)
     {
         var cs = new CS();
-        cs.setCodeSystem(codeSystem);
         cs.setCode(code);
         return cs;
     }

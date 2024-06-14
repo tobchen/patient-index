@@ -54,8 +54,8 @@ public class PixQueryResponseBuilder
         response.setCreationTime(Hl7v3Utilities.createTs(ZonedDateTime.now()));
         response.setInteractionId(Hl7v3Utilities.createIi("2.16.840.1.113883.1.6", "PRPA_IN201310UV02"));
         response.setProcessingCode(processingCode);
-        response.setProcessingModeCode(Hl7v3Utilities.createCs(null, "T"));
-        response.setAcceptAckCode(Hl7v3Utilities.createCs(null, "NE"));
+        response.setProcessingModeCode(Hl7v3Utilities.createCs("T"));
+        response.setAcceptAckCode(Hl7v3Utilities.createCs("NE"));
 
         // TODO Sender
 
@@ -72,7 +72,7 @@ public class PixQueryResponseBuilder
     {
         var acknowledgement = new MCCIMT000300UV01Acknowledgement();
 
-        acknowledgement.setTypeCode(Hl7v3Utilities.createCs(null, isOk ? "AA" : "AE"));
+        acknowledgement.setTypeCode(Hl7v3Utilities.createCs(isOk ? "AA" : "AE"));
         acknowledgement.setTargetMessage(targetMessage);
 
         if (!isOk)
@@ -88,7 +88,7 @@ public class PixQueryResponseBuilder
         var detail = new MCCIMT000300UV01AcknowledgementDetail();
 
         detail.setTypeCode(AcknowledgementDetailType.E);
-        detail.setCode(Hl7v3Utilities.createCs(null, "204 (Unknown Key Identifier)"));
+        detail.setCode(Hl7v3Utilities.createCs("204 (Unknown Key Identifier)"));
         // TODO Location
 
         return detail;
@@ -100,7 +100,7 @@ public class PixQueryResponseBuilder
 
         controlActProcess.setClassCode(ActClassControlAct.CACT);
         controlActProcess.setMoodCode(XActMoodIntentEvent.EVN);
-        controlActProcess.setCode(Hl7v3Utilities.createCs("2.16.840.1.113883.1.6", "PRPA_TE201310UV02"));
+        controlActProcess.setCode(Hl7v3Utilities.createCs("PRPA_TE201310UV02"));
 
         controlActProcess.getSubject().add(buildSubject(foundIds));
 
@@ -132,7 +132,7 @@ public class PixQueryResponseBuilder
 
         registrationEvent.getClassCode().add("REG");
         registrationEvent.getMoodCode().add("EVN");
-        registrationEvent.setStatusCode(Hl7v3Utilities.createCs(null, "active"));
+        registrationEvent.setStatusCode(Hl7v3Utilities.createCs("active"));
         registrationEvent.setSubject1(buildRegEvnSubject(foundIds));
         registrationEvent.setCustodian(buildCustodian());
 
@@ -155,7 +155,7 @@ public class PixQueryResponseBuilder
 
         patient.getClassCode().add("PAT");
         patient.getId().addAll(foundIds);
-        patient.setStatusCode(Hl7v3Utilities.createCs(null, "active"));
+        patient.setStatusCode(Hl7v3Utilities.createCs("active"));
         patient.setPatientPerson(buildPatientPerson());
 
         return patient;
@@ -198,8 +198,8 @@ public class PixQueryResponseBuilder
         var queryAck = new MFMIMT700711UV01QueryAck();
 
         queryAck.setQueryId(queryByParameter.getValue().getQueryId());
-        queryAck.setStatusCode(Hl7v3Utilities.createCs(null, "deliveredResponse"));
-        queryAck.setQueryResponseCode(Hl7v3Utilities.createCs(null,
+        queryAck.setStatusCode(Hl7v3Utilities.createCs("deliveredResponse"));
+        queryAck.setQueryResponseCode(Hl7v3Utilities.createCs(
             foundIds != null ? (!foundIds.isEmpty() ? "OK" : "NF") : "AE"));
 
         return queryAck;

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.gclient.IClientExecutable;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
+import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
@@ -71,11 +72,15 @@ public class QueryService
 
                 propagator.inject(Context.current(), executable, otelSetter);
 
-                var patient = executable.execute();
-
-                if (patient != null)
+                try
                 {
+                    var patient = executable.execute();
+
                     populate(systemValuesMap, patient);
+                }
+                catch (ResourceNotFoundException e)
+                {
+                    // TODO Log?
                 }
             }
             else
@@ -113,17 +118,18 @@ public class QueryService
 
     private void populate(Map<String, Set<String>> systemValuesMap, Patient patient)
     {
-        // TODO Do not populate if patient is inactive
-
-        populate(systemValuesMap, pidOid, patient.getIdPart());
-
-        for (var identifier : patient.getIdentifier())
+        if (patient.getActive())
         {
-            var system = identifier.getSystem();
-            var value = identifier.getValue();
-            if (system != null && system.startsWith("urn:oid:") && value != null)
+            populate(systemValuesMap, pidOid, patient.getIdPart());
+
+            for (var identifier : patient.getIdentifier())
             {
-                populate(systemValuesMap, system.substring(8), value);
+                var system = identifier.getSystem();
+                var value = identifier.getValue();
+                if (system != null && system.startsWith("urn:oid:") && value != null)
+                {
+                    populate(systemValuesMap, system.substring(8), value);
+                }
             }
         }
     }
