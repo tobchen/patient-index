@@ -90,7 +90,7 @@ public class QueryService
                     .forResource(Patient.class)
                     .where(new TokenClientParam(Patient.SP_IDENTIFIER)
                         .exactly()
-                        .systemAndIdentifier(system, value)
+                        .systemAndIdentifier("urn:oid:" + system, value)
                     )
                     .returnBundle(Bundle.class);
                 

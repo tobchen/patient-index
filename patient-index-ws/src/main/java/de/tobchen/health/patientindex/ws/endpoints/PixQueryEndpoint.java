@@ -35,35 +35,42 @@ public class PixQueryEndpoint
         var idSystem = patientIdentifier.getRoot();
         var idValue = patientIdentifier.getExtension();
 
-        var systemValuesMap = queryService.findIdentifiers(idSystem, idValue);
-        
         Collection<II> foundIds;
 
-        if (systemValuesMap.isEmpty())
+        if (idSystem == null || idValue == null)
         {
             foundIds = null;
         }
         else
         {
-            systemValuesMap.get(idSystem).remove(idValue);
+            var systemValuesMap = queryService.findIdentifiers(idSystem, idValue);
 
-            var whiteList = new HashSet<String>();
-            for (var dataSource : parameterList.getDataSource())
+            if (systemValuesMap.isEmpty())
             {
-                whiteList.add(dataSource.getValue().get(0).getRoot());
+                foundIds = null;
             }
-
-            if (!whiteList.isEmpty())
+            else
             {
-                systemValuesMap.keySet().retainAll(whiteList);
-            }
+                systemValuesMap.get(idSystem).remove(idValue);
 
-            foundIds = new ArrayList<>();
-            for (var systemValues : systemValuesMap.entrySet())
-            {
-                for (var value : systemValues.getValue())
+                var whiteList = new HashSet<String>();
+                for (var dataSource : parameterList.getDataSource())
                 {
-                    foundIds.add(Hl7v3Utilities.createIi(systemValues.getKey(), value));
+                    whiteList.add(dataSource.getValue().get(0).getRoot());
+                }
+
+                if (!whiteList.isEmpty())
+                {
+                    systemValuesMap.keySet().retainAll(whiteList);
+                }
+
+                foundIds = new ArrayList<>();
+                for (var systemValues : systemValuesMap.entrySet())
+                {
+                    for (var value : systemValues.getValue())
+                    {
+                        foundIds.add(Hl7v3Utilities.createIi(systemValues.getKey(), value));
+                    }
                 }
             }
         }
