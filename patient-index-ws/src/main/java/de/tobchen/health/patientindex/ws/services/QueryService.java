@@ -10,13 +10,14 @@ import javax.annotation.Nullable;
 
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.Patient;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.gclient.IClientExecutable;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import de.tobchen.health.patientindex.commons.configurations.PatientIndexConfig;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
@@ -24,6 +25,7 @@ import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.context.propagation.TextMapSetter;
 
 @Service
+@EnableConfigurationProperties(PatientIndexConfig.class)
 public class QueryService
 {
     private final Tracer tracer;
@@ -35,7 +37,7 @@ public class QueryService
     private final String pidOid;
 
     public QueryService(OpenTelemetry openTelemetry, IGenericClient client,
-        @Value("${patient-index.pid-oid}") String pidOid)
+        PatientIndexConfig config)
     {
         this.tracer = openTelemetry.getTracer(QueryService.class.getName());
         this.propagator = openTelemetry.getPropagators().getTextMapPropagator();
@@ -53,7 +55,7 @@ public class QueryService
         
         this.client = client;
 
-        this.pidOid = pidOid;
+        this.pidOid = config.pid().oid();
     }
 
     public Map<String, Set<String>> findIdentifiers(String system, String value)
@@ -78,10 +80,7 @@ public class QueryService
 
                     populate(systemValuesMap, patient);
                 }
-                catch (ResourceNotFoundException e)
-                {
-                    // TODO Log?
-                }
+                catch (ResourceNotFoundException e) { }
             }
             else
             {

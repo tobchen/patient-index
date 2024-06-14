@@ -85,7 +85,7 @@ Additionally, the following properties are required and have no defaults:
 |Property|Description|Example|
 |---|---|---|
 |`patient-index.fhir.server`|The FHIR base url to query patient resources|`http://localhost:8080/fhir/r5`|
-|`patient-index.pid-oid`|The OID to be considered the patient resource id's OID|`0.0.0`|
+|`patient-index.pid.oid`|The OID to be considered the patient resource id's OID|`0.0.0`|
 
 #### WSDL
 
