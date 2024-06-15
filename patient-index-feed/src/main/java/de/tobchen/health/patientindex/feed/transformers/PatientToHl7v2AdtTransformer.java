@@ -3,6 +3,7 @@ package de.tobchen.health.patientindex.feed.transformers;
 import java.util.Date;
 
 import org.hl7.fhir.r5.model.Patient;
+import org.hl7.fhir.r5.model.Patient.LinkType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.integration.transformer.AbstractTransformer;
@@ -58,9 +59,26 @@ public class PatientToHl7v2AdtTransformer extends AbstractTransformer
 
         var pid = patient.getIdPart();
 
-        // TODO Get mrgId
+        String mrgId = null;
+        for (var link : patient.getLink())
+        {
+            if (LinkType.REPLACEDBY.equals(link.getType()))
+            {
+                var idType = link.getOther().getReferenceElement();
+                if ("Patient".equals(idType.getResourceType()))
+                {
+                    var id = idType.getIdPart();
+                    if (id != null)
+                    {
+                        mrgId = pid;
+                        pid = id;
+                        break;
+                    }
+                }
+            }
+        }
 
-        return createHl7(msgId, msgDt, eventDt, pid, null);
+        return createHl7(msgId, msgDt, eventDt, pid, mrgId);
     }
 
     private @Nullable Message createHl7(String msgId, Date msgDt, Date eventDt, String pid, String mrgId)
