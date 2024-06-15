@@ -16,3 +16,5 @@ export SPRING_RABBITMQ_HOST=localhost
 export SPRING_RABBITMQ_PORT=5672
 export SPRING_RABBITMQ_USERNAME=guest
 export SPRING_RABBITMQ_PASSWORD=guest
+
+# export SPRING_AUTOCONFIGURE_EXCLUDE="org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration"

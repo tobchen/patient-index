@@ -26,6 +26,8 @@ Check out the conformance statement for available methods and operations.
 
 The usual Spring Boot configuration applies (e.g. `server.port`).
 
+This component sends patient updates to RabbitMQ by default, and fails if no broker is running. To disable set: `SPRING_AUTOCONFIGURE_EXCLUDE="org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration"`
+
 #### Development
 
 The Main component uses JOOQ for code generation. If the patients table schema changes regenerate sources with maven using the specific profile:

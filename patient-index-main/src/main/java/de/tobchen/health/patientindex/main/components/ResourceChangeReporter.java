@@ -2,6 +2,7 @@ package de.tobchen.health.patientindex.main.components;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -21,12 +22,12 @@ public class ResourceChangeReporter
 {
     private final Logger logger = LoggerFactory.getLogger(ResourceChangeReporter.class);
 
-    private final RabbitTemplate template;
+    private final Optional<RabbitTemplate> template;
     private final TopicExchange topic;
 
     private final FhirContext context;
 
-    public ResourceChangeReporter(RabbitTemplate template, TopicExchange topic, FhirContext context)
+    public ResourceChangeReporter(Optional<RabbitTemplate> template, TopicExchange topic, FhirContext context)
     {
         this.template = template;
         this.topic = topic;
@@ -57,6 +58,6 @@ public class ResourceChangeReporter
             .andProperties(messageProperties)
             .build();
 
-        template.send(topic.getName(), key, message);
+        template.ifPresent(t -> t.send(topic.getName(), key, message));
     }
 }
