@@ -12,8 +12,8 @@
 	<groupId>de.tobchen.health</groupId>
 	<artifactId>patient-index-feed</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>patient-index-feed</name>
-	<description>Patient Index Feed</description>
+	<name>Patient Index Feed</name>
+	<description>An IHE Patient Identity Feed component for the Patient Index.</description>
 	<properties>
 		<java.version>21</java.version>
 	</properties>

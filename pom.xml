@@ -7,6 +7,8 @@
     <groupId>de.tobchen.health</groupId>
     <artifactId>patient-index</artifactId>
     <version>0.0.1-SNAPSHOT</version>
+    <name>Patient Index</name>
+    <description>An index for patient identifiers with a FHIR API and an IHE query API.</description>
     <packaging>pom</packaging>
 
     <modules>
