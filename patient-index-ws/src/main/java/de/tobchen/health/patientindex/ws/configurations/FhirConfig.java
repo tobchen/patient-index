@@ -1,6 +1,5 @@
 package de.tobchen.health.patientindex.ws.configurations;
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -9,7 +8,6 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 import de.tobchen.health.patientindex.commons.configurations.PatientIndexConfig;
 
 @Configuration
-@EnableConfigurationProperties(PatientIndexConfig.class)
 public class FhirConfig
 {
     @Bean

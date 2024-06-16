@@ -2,7 +2,6 @@ package de.tobchen.health.patientindex.feed.configurations;
 
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.amqp.dsl.Amqp;
@@ -18,7 +17,6 @@ import de.tobchen.health.patientindex.feed.transformers.Hl7v2ToBytesTransformer;
 import de.tobchen.health.patientindex.feed.transformers.PatientToHl7v2AdtTransformer;
 
 @Configuration
-@EnableConfigurationProperties(PatientIndexConfig.class)
 public class IntegrationConfig
 {
     @Bean

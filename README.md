@@ -48,7 +48,9 @@ The *Patient Index* Feed component polls the *Patient Index* regularly for updat
 
 #### Configuration
 
-The following properties are required and have no defaults:
+The usual Spring configuration applies (e.g. `spring.rabbitmq.host`).
+
+Additionally, following properties are required and have no defaults:
 
 |Property|Description|Example|
 |---|---|---|
@@ -91,7 +93,7 @@ Additionally, the following properties are required and have no defaults:
 
 #### WSDL
 
-The *Patient Index* web service does not offer any WSDL itself. Please use the IHE-provided one and change the service url.
+The *Patient Index* web service does not offer any WSDL itself. For developing consumers, please use the IHE-provided one and change the service url.
 
 #### Compilation
 

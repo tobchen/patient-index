@@ -10,7 +10,6 @@ import javax.annotation.Nullable;
 
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.Patient;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 import ca.uhn.fhir.rest.client.api.IGenericClient;
@@ -25,7 +24,6 @@ import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.context.propagation.TextMapSetter;
 
 @Service
-@EnableConfigurationProperties(PatientIndexConfig.class)
 public class QueryService
 {
     private final Tracer tracer;
