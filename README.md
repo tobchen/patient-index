@@ -10,6 +10,8 @@ The *Patient Index* system is made of of three components:
 * *Patient Index* Feed, an optional poller enabling IHE Patient Identity Feed (ITI-8) conformant messaging of new (or updated) or merged patient resources
 * *Patient Index* Web Service, an optional web service enabling IHE PIXV3 Query (ITI-45) querying of patient resources
 
+To fully work the system needs a PostgreSQL database and a RabbitMQ broker.
+
 ![Patient Index Architecture](./architecture.svg)
 
 ### Patient Index Main
@@ -26,7 +28,7 @@ Check out the conformance statement for available methods and operations.
 
 The usual Spring Boot configuration applies (e.g. `server.port`).
 
-This component sends patient updates to RabbitMQ by default, and fails if no broker is running. To disable set: `SPRING_AUTOCONFIGURE_EXCLUDE="org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration"`
+This component sends patient updates to RabbitMQ by default (publishing to the `patient-index.resource` exchange), and fails if no broker is running. To disable set: `SPRING_AUTOCONFIGURE_EXCLUDE="org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration"`
 
 #### Development
 
@@ -40,11 +42,9 @@ The PostgreSQL database must be running for successful execution. The */compose-
 
 ### Patient Index Feed
 
-The *Patient Index* Feed component polls the *Patient Index* regularly for updated patient resources and generates HL7v2 ADT-A01 or -A40 messages depending on whether the updated resource has a `link` field or not. These messages are queued to be sent to the given HL7v2 receiver.
+The *Patient Index* Feed component receives patient resources from RabbitMQ (subscribing to `patient-index.resource` via `patient-index-feed` queue) and generates HL7v2 ADT-A01 or -A40 messages depending on whether the resource has a `link` field or not. These messages are sent to a configured HL7 V2 receiver.
 
-![Patient Index Feed Polling](./patient-index-feed/polling.svg)
-
-![Patient Index Feed Message Handling](./patient-index-feed/message-handling.svg)
+![Patient Index Feed Flow](./patient-index-feed/flow.svg)
 
 #### Configuration
 
@@ -76,7 +76,7 @@ This component depends on `patient-index-commons`.
 
 The *Patient Index* Web Service queries the *Patient Index* on incoming requests.
 
-While the *Patient Index* itself allows all kinds of identifier system URIs, this web service only recognizes systems of type OID (e.g. `urn:oid:0.0.0`). For FHIR Patient ids a system OID needs to be configured.
+While the *Patient Index* itself allows all kinds of identifier system URIs, this web service only recognizes systems of type OID (e.g. `urn:oid:0.0.0`). For FHIR Patient ids a system OID needs to be configured (`patient-index.pid.oid`).
 
 ![Patient Index Web Service Query Sequence](./patient-index-ws/sequence.svg)
 
@@ -95,9 +95,11 @@ Additionally, the following properties are required and have no defaults:
 
 The *Patient Index* web service does not offer any WSDL itself. For developing consumers, please use the IHE-provided one and change the service url.
 
-#### Compilation
+#### Development
 
 To successfully compile the *Patient Index* web service place the *coreschemas* and *multicacheschemas* folders from the HL7v3 Normative Edition CD in */src/main/resources/schemas/hl7v3-ne2008/*
+
+This component depends on `patient-index-commons`.
 
 ## Docker Compose
 
