@@ -101,6 +101,6 @@ To successfully compile the *Patient Index* web service place the *coreschemas* 
 
 This component depends on `patient-index-commons`.
 
-## Docker Compose
+## Docker
 
-To successfully run *compose.yaml* place the [OpenTelemetry javaagent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) in */otel/opentelemetry-javaagent.jar*
+To successfully run *compose.yaml* first run *build-docker.sh* to create the components' images, then place the [OpenTelemetry javaagent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) in */otel/opentelemetry-javaagent.jar* to run the services.

@@ -1,10 +1,14 @@
-FROM maven:3.9.6-eclipse-temurin-21-alpine AS build
+ARG PIX_VERSION=0.0.1-SNAPSHOT
+ARG MAVEN_VERSION=3
+ARG JAVA_VERSION=21
+
+FROM patient-index-commons:${PIX_VERSION}-mvn-${MAVEN_VERSION}-java-${JAVA_VERSION} AS build
 WORKDIR /app
 COPY ./pom.xml .
 RUN mvn dependency:go-offline
 COPY ./src ./src
 RUN mvn package -DskipTests
 
-FROM eclipse-temurin:21.0.1_12-jre-alpine
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
 COPY --from=build /app/target/*.jar /app/main.jar
-ENTRYPOINT [ "java", "-jar", "/app/main.jar" ]
+CMD [ "java", "-jar", "/app/main.jar" ]

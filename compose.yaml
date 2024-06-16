@@ -1,63 +1,86 @@
 services:
   jaeger:
-    image: jaegertracing/all-in-one:1.54.0
+    image: jaegertracing/all-in-one:1
     ports:
       - 127.0.0.1:16686:16686
+
   prometheus:
-    image: prom/prometheus:v2.49.1
+    image: prom/prometheus:v2.52.0
     ports:
       - 127.0.0.1:9090:9090
     volumes:
       - ./compose-settings/prometheus.yaml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - patient-index-main
+      - patient-index-feed
+      - patient-index-ws
 
-  postgres-patient-index-main:
-    image: postgres:16.1-bullseye
-    ports:
-      - 127.0.0.1:5432:5432
+  postgres:
+    image: postgres:16
     environment:
       - POSTGRES_PASSWORD=password
-  postgres-patient-index-feed:
-    image: postgres:16.1-bullseye
+      - POSTGRES_USER=postgres
+    volumes:
+      - ./patient-index-main/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init-pix-main.sql
+  
+  rabbitmq:
+    image: rabbitmq:3-management
     ports:
-      - 127.0.0.1:5442:5432
-    environment:
-      - POSTGRES_PASSWORD=password
+      - 127.0.0.1:15672:15672
   
   patient-index-feed-consumer:
-    build: ./patient-index-feed-consumer
+    image: python:3-alpine
+    volumes:
+      - ./patient-index-feed-consumer/consumer.py:/usr/src/consumer.py
+    command: python3 /usr/src/consumer.py 6060
+    tty: true
 
   patient-index-main:
-    build: ./patient-index-main
+    image: patient-index-main:0.0.1-SNAPSHOT-mvn-3-java-21
     ports:
       - 127.0.0.1:8080:8080
     env_file:
-      - path: ./compose-settings/default.env
+      - ./compose-settings/otel.env
+      - ./compose-settings/rabbit.env
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-patient-index-main:5432/postgres
+      - OTEL_SERVICE_NAME=patient-index-main
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=password
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
     volumes:
       - ./otel:/otel
+    depends_on:
+      - postgres
+      - rabbitmq
+      - jaeger
+      - patient-index-feed
   
   patient-index-feed:
-    build: ./patient-index-feed
+    image: patient-index-feed:0.0.1-SNAPSHOT-mvn-3-java-21
     env_file:
-      - path: ./compose-settings/default.env
+      - ./compose-settings/otel.env
+      - ./compose-settings/rabbit.env
+      - ./compose-settings/patient-index.env
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-patient-index-feed:5432/postgres
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=password
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - OTEL_SERVICE_NAME=patient-index-feed
     volumes:
       - ./otel:/otel
+    depends_on:
+      - rabbitmq
+      - jaeger
+      - patient-index-feed-consumer
   
   patient-index-ws:
-    build: ./patient-index-ws
+    image: patient-index-ws:0.0.1-SNAPSHOT-mvn-3-java-21
     ports:
       - 127.0.0.1:9080:8080
     env_file:
-      - path: ./compose-settings/default.env
+      - ./compose-settings/otel.env
+      - ./compose-settings/patient-index.env
+    environment:
+      - OTEL_SERVICE_NAME=patient-index-ws
     volumes:
       - ./otel:/otel
-
+    depends_on:
+      - jaeger
+      - patient-index-main
