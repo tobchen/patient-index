@@ -7,7 +7,7 @@ import java.util.HashSet;
 import org.springframework.ws.server.endpoint.annotation.Endpoint;
 import org.springframework.ws.server.endpoint.annotation.RequestPayload;
 import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
-import org.springframework.ws.soap.server.endpoint.annotation.SoapAction;
+import org.springframework.ws.soap.addressing.server.annotation.Action;
 
 import de.tobchen.health.patientindex.ws.model.schemas.II;
 import de.tobchen.health.patientindex.ws.model.schemas.PRPAIN201309UV02;
@@ -26,7 +26,7 @@ public class PixQueryEndpoint
         this.queryService = queryService;
     }
 
-    @SoapAction("urn:hl7-org:v3:PRPA_IN201309UV02")
+    @Action(value = "urn:hl7-org:v3:PRPA_IN201309UV02", output = "urn:hl7-org:v3:PRPA_IN201310UV02")
     public @ResponsePayload PRPAIN201310UV02 query(@RequestPayload PRPAIN201309UV02 request)
     {
         var parameterList = request.getControlActProcess().getQueryByParameter().getValue().getParameterList();

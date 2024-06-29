@@ -5,6 +5,7 @@ import { Patient } from './patient';
 
 const nsSoap = "http://www.w3.org/2003/05/soap-envelope";
 const nsHl73 = "urn:hl7-org:v3";
+const nsWsa = "http://www.w3.org/2005/08/addressing";
 
 const receiverOid = "1.2.3";
 const senderOid = "4.5.6";
@@ -21,7 +22,14 @@ function createSoapMsg(idSystem: string, idValue: string, whiteList: string[])
 {
     let doc = create({ version: "1.0" })
         .ele(nsSoap, "Envelope")
-            .ele(nsSoap, "Header").up()
+            .ele(nsSoap, "Header")
+                .ele(nsWsa, "Action").txt("urn:hl7-org:v3:PRPA_IN201309UV02").up()
+                .ele(nsWsa, "MessageID").txt(`urn:uuid:${randomUUID()}`).up()
+                .ele(nsWsa, "ReplyTo")
+                    .ele(nsWsa, "Address").txt("http://www.w3.org/2005/08/addressing/anonymous").up()
+                .up()
+                .ele(nsWsa, "To").txt("").up()
+            .up()
             .ele(nsSoap, "Body")
                 .ele(nsHl73, "PRPA_IN201309UV02", { ITSVersion: "XML_1.0" })
                     .ele(nsHl73, "id", { root: randomUUID() }).up()
@@ -139,7 +147,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with resource id", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(resourceOid, patient.id!, [ patient.identifier![0].system.substring(8) ]).end()
             })
@@ -169,7 +177,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with patient identifier", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value,
                     [ patient.identifier![1].system.substring(8) ]).end()
@@ -202,7 +210,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with resource id", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(resourceOid, patient.id!, []).end()
             })
@@ -232,7 +240,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with patient identifier", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value, []).end()
             })
@@ -264,7 +272,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with resource id", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(resourceOid, patient.id!, [ randomOid() ]).end()
             })
@@ -289,7 +297,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
         test("with patient identifier", async ({ request }) => {
             const response = await request.post("http://localhost:9080/ws/", {
                 headers: {
-                    "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                    "Content-Type": 'application/soap+xml;charset=UTF-8'
                 },
                 data: createSoapMsg(patient.identifier![0].system.substring(8), patient.identifier![0].value,
                     [ randomOid() ]).end()
@@ -316,7 +324,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
     test("Case 4", async ({ request }) => {
         const response = await request.post("http://localhost:9080/ws/", {
             headers: {
-                "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                "Content-Type": 'application/soap+xml;charset=UTF-8'
             },
             data: createSoapMsg(resourceOid, randomUUID(), []).end()
         })
@@ -341,7 +349,7 @@ test.describe("IHE Cases ( https://profiles.ihe.net/ITI/TF/Volume2/ITI-45.html#3
     test("Case 5", async ({ request }) => {
         const response = await request.post("http://localhost:9080/ws/", {
             headers: {
-                "Content-Type": 'application/soap+xml;charset=UTF-8;action="urn:hl7-org:v3:PRPA_IN201309UV02"'
+                "Content-Type": 'application/soap+xml;charset=UTF-8'
             },
             data: createSoapMsg(randomOid(), randomUUID(), []).end()
         })
