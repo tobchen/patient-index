@@ -1,3 +1,7 @@
 logging:
   level:
     de.tobchen: trace
+
+management:
+  security:
+    enabled: false
